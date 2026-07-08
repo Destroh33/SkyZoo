@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -5,13 +6,18 @@ using UnityEngine.InputSystem;
 // Isometric 3D grid view — grid lives in the XZ plane, Y is up.
 // The GridView GameObject's world position is the CENTER of the grid.
 // Hotkeys (bound in InputSystem_Actions → Grid map):
-//   1-9   select enclosure slot → enclosure placement mode
+//   1-9   select hand slot → enters the mode that card's TargetMode requires
 //   P     path placement mode
+//   N     advance day (debug: same as clicking the Advance button)
 //   Esc   cancel / clear mode
-//   LMB   place enclosure / toggle path edge
-//   RMB   remove enclosure under cursor
+//   LMB   place enclosure / toggle path edge / pick target(s) for a card
+//   RMB   remove enclosure under cursor (refunds partial mana)
+// All grid/hand interaction is gated to Phase.Build — during Phase.Reward
+// (the daily 3-card choice) the board is frozen until ChooseReward is called.
 public class GridView : MonoBehaviour
 {
+    public enum Phase { Build, Reward }
+
     [Header("Grid Settings")]
     [SerializeField] private int   gridWidth  = 10;
     [SerializeField] private int   gridHeight = 10;
@@ -39,8 +45,18 @@ public class GridView : MonoBehaviour
     [SerializeField] private float camZoom        = 1f;   // >1 zooms out, <1 zooms in
     [SerializeField] private float perspectiveFov = 60f;
 
-    [Header("Test Enclosures (assign in Inspector)")]
-    [SerializeField] private EnclosureData[] testEnclosures;
+    [Header("Economy")]
+    [SerializeField] private int   startingMana          = 3;
+    [SerializeField] private float enclosureRefundFraction = 0.5f; // partial, not full, refund on deletion
+
+    [Header("Starting Hand (assign card assets in Inspector)")]
+    [SerializeField] private CardData[] startingHand;
+
+    [Header("Phase / Week")]
+    [SerializeField] private int   daysPerWeek       = 5; // GDD originally said 7 — using 5 per latest direction
+    [SerializeField] private float startingQuota     = 20f;
+    [SerializeField] private float quotaGrowthPerWeek = 1.25f; // quota scaling is the run's difficulty curve
+    [SerializeField] private CardData[] cardPool;          // possible cards offered by the daily reward draft
 
     // ── Y heights for overlay layers ──────────────────────────────────────────
     private const float YGrid    = 0.005f;
@@ -61,10 +77,41 @@ public class GridView : MonoBehaviour
     private InputAction _cancelAction;
     private InputAction _selectSlotAction;
     private InputAction _toggleCamAction;
+    private InputAction _advanceDayAction;
 
     // ── Runtime state ────────────────────────────────────────────────────────
     private GridModel _model;
     private Sprite    _whiteSprite;
+
+    private Hand     _hand;
+    private ManaPool _mana;
+    private int      _currentDay; // ever-increasing master clock, used for timed-bonus expiry
+
+    private Phase _phase = Phase.Build;
+    private int   _day   = 1;      // 1..daysPerWeek, resets each week — for display
+    private int   _week  = 1;
+    private float _quota;
+    private float _weekScore;
+    private List<CardData> _rewardOptions;
+
+    // For UI (e.g. HandHUD, PhaseHUD) to read/react to without polling every frame.
+    public event Action OnHandChanged;
+    public event Action OnPendingCardChanged;
+    public event Action OnEconomyChanged; // mana / quota / score / day / week changed
+    public event Action OnPhaseChanged;
+
+    public IReadOnlyList<CardInstance> HandCards => _hand.Cards;
+    public CardInstance PendingCard => _pendingCard;
+
+    public Phase CurrentPhase => _phase;
+    public int   Day         => _day;
+    public int   DaysPerWeek => daysPerWeek;
+    public int   Week        => _week;
+    public float Quota       => _quota;
+    public float WeekScore   => _weekScore;
+    public int   Mana        => _mana.Current;
+    public int   MaxMana     => _mana.Max;
+    public IReadOnlyList<CardData> RewardOptions => _rewardOptions;
 
     // World-space position of grid corner (0,0) — set in Start from transform.position
     private Vector3 _origin;
@@ -76,9 +123,11 @@ public class GridView : MonoBehaviour
     private SpriteRenderer _enclosurePreviewSr;
     private GameObject     _edgePreview;
 
-    private enum Mode { None, Enclosure, Path }
+    private enum Mode { None, Enclosure, Path, SelectSingleTarget, SelectMoveSource, SelectMoveDestination }
     private Mode          _mode;
-    private EnclosureData _pendingEnclosure;
+    private CardInstance  _pendingCard;
+    private EnclosureData _pendingEnclosureData; // resolved from _pendingCard when TargetMode == PlaceEnclosure
+    private EnclosureInstance _moveSource;
 
 
     private readonly Plane _groundPlane = new(Vector3.up, Vector3.zero);
@@ -98,6 +147,25 @@ public class GridView : MonoBehaviour
         _cancelAction          = map.FindAction("Cancel",          throwIfNotFound: true);
         _selectSlotAction      = map.FindAction("SelectSlot",      throwIfNotFound: true);
         _toggleCamAction       = map.FindAction("ToggleCamera",    throwIfNotFound: true);
+        _advanceDayAction      = map.FindAction("AdvanceDay",      throwIfNotFound: true);
+
+        // Built here (not Start) so hand/mana state exists before any other
+        // script's Start() runs — Unity doesn't guarantee Start() ordering
+        // between different components, but Awake() always fully completes
+        // first across every object. HandHUD.Start() reads this immediately.
+        _origin = transform.position + new Vector3(
+            -gridWidth  * cellSize * 0.5f,
+            0f,
+            -gridHeight * cellSize * 0.5f);
+
+        _model       = new GridModel(gridWidth, gridHeight);
+        _whiteSprite = MakeWhiteSprite();
+
+        _mana  = new ManaPool(startingMana);
+        _hand  = new Hand();
+        _quota = startingQuota;
+        foreach (var card in startingHand)
+            if (card != null) _hand.Add(card);
     }
 
     void OnEnable()
@@ -109,6 +177,7 @@ public class GridView : MonoBehaviour
         _cancelAction.performed     += OnCancel;
         _selectSlotAction.performed += OnSelectSlot;
         _toggleCamAction.performed  += OnToggleCamera;
+        _advanceDayAction.performed += OnAdvanceDay;
     }
 
     void OnDisable()
@@ -119,19 +188,13 @@ public class GridView : MonoBehaviour
         _cancelAction.performed     -= OnCancel;
         _selectSlotAction.performed -= OnSelectSlot;
         _toggleCamAction.performed  -= OnToggleCamera;
+        _advanceDayAction.performed -= OnAdvanceDay;
         inputActions.FindActionMap("Grid").Disable();
     }
 
     void Start()
     {
-        // Grid is centered on this transform — origin is the (0,0) corner offset
-        _origin = transform.position + new Vector3(
-            -gridWidth  * cellSize * 0.5f,
-            0f,
-            -gridHeight * cellSize * 0.5f);
-
-        _model       = new GridModel(gridWidth, gridHeight);
-        _whiteSprite = MakeWhiteSprite();
+        LogState("Game start");
 
         SpawnIsland();
         BuildGridLines();
@@ -143,8 +206,8 @@ public class GridView : MonoBehaviour
         _edgePreview.SetActive(false);
 
         // Find or add FreeCameraController on the main camera
-        _freeCam  = Camera.main.GetComponent<FreeCameraController>();
-        _freeCam ??= Camera.main.gameObject.AddComponent<FreeCameraController>();
+        _freeCam = Camera.main.GetComponent<FreeCameraController>();
+        if (_freeCam == null) _freeCam = Camera.main.gameObject.AddComponent<FreeCameraController>();
         _freeCam.enabled = false;
 
         FitCamera();
@@ -180,45 +243,231 @@ public class GridView : MonoBehaviour
 
     private void OnSelectSlot(InputAction.CallbackContext ctx)
     {
-        if (int.TryParse(ctx.control.name, out int num) && num >= 1 && num <= testEnclosures.Length
-            && testEnclosures[num - 1] != null)
+        if (_phase != Phase.Build) return;
+        if (!int.TryParse(ctx.control.name, out int num) || num < 1 || num > _hand.Cards.Count) return;
+        SelectCard(_hand.Cards[num - 1]);
+    }
+
+    // Selects a card from the hand as the pending card to play — entering the
+    // mode its TargetMode requires. Selecting the already-pending card again
+    // deselects it. Called by number-key hotkeys and by HandHUD card clicks.
+    // Takes the specific CardInstance (not just its CardData) so duplicate
+    // copies of the same card type in hand are never confused for one another.
+    public void SelectCard(CardInstance card)
+    {
+        if (card == null || _phase != Phase.Build) return;
+
+        if (_pendingCard == card)
         {
-            _pendingEnclosure = testEnclosures[num - 1];
-            _mode = Mode.Enclosure;
+            SetMode(Mode.None);
+            return;
         }
+
+        _pendingCard = card;
+        _moveSource  = null;
+
+        switch (card.Data.TargetMode)
+        {
+            case CardTargetMode.PlaceEnclosure:
+                _pendingEnclosureData = ((EnclosureCardData)card.Data).enclosure;
+                _mode = Mode.Enclosure;
+                break;
+            case CardTargetMode.SelectOneEnclosure:
+                _mode = Mode.SelectSingleTarget;
+                break;
+            case CardTargetMode.MoveEnclosure:
+                _mode = Mode.SelectMoveSource;
+                break;
+        }
+
+        OnPendingCardChanged?.Invoke();
     }
 
     private void OnPathMode(InputAction.CallbackContext ctx)
     {
+        if (_phase != Phase.Build) return;
         _mode = Mode.Path;
         _enclosurePreview.SetActive(false);
     }
 
     private void OnCancel(InputAction.CallbackContext ctx) => SetMode(Mode.None);
 
+    // Keyboard shortcut for the same thing the Advance button does.
+    private void OnAdvanceDay(InputAction.CallbackContext ctx) => AdvanceDayPhase();
+
     private void OnClick(InputAction.CallbackContext ctx)
     {
+        if (_phase != Phase.Build) return;
         if (!TryGetGroundHit(out Vector3 hit)) return;
         switch (_mode)
         {
-            case Mode.Enclosure: TryPlaceEnclosure(hit); break;
-            case Mode.Path:      TryTogglePath(hit);     break;
+            case Mode.Enclosure:            TryPlaceEnclosure(hit);   break;
+            case Mode.Path:                 TryTogglePath(hit);       break;
+            case Mode.SelectSingleTarget:    TryApplyAmplify(hit);    break;
+            case Mode.SelectMoveSource:      TrySelectMoveSource(hit); break;
+            case Mode.SelectMoveDestination: TryCompleteMove(hit);     break;
         }
     }
 
     private void OnRemoveEnclosure(InputAction.CallbackContext ctx)
     {
+        if (_phase != Phase.Build) return;
         if (TryGetGroundHit(out Vector3 hit)) TryRemoveAt(hit);
     }
 
-    // ── Placement logic ──────────────────────────────────────────────────────
+    // ── Day / week phase loop ─────────────────────────────────────────────────
+
+    // Ends the build phase for today: scores the grid, advances the day/week
+    // counters (rolling over and scaling the quota at week's end), refills
+    // mana, expires timed bonuses, and rolls the 3-card daily reward.
+    public void AdvanceDayPhase()
+    {
+        if (_phase != Phase.Build) return;
+
+        SetMode(Mode.None); // clear any pending card/targeting before ending the day
+
+        _currentDay++;
+        float dayScore = _model.GetTotalScore();
+        _weekScore += dayScore;
+
+        foreach (var e in _model.Enclosures) e.ExpireBonuses(_currentDay);
+        _mana.RefillForNewDay();
+
+        LogState($"Day {_day}/{daysPerWeek} scored {dayScore:0.#} → week total {_weekScore:0.#}/{_quota:0.#}");
+
+        if (_day >= daysPerWeek)
+        {
+            bool passed = _weekScore >= _quota;
+            Debug.Log(passed
+                ? $"[SkyZoo] Week {_week} complete — quota met! ({_weekScore:0.#}/{_quota:0.#})"
+                : $"[SkyZoo] Week {_week} FAILED quota. ({_weekScore:0.#}/{_quota:0.#})");
+
+            _week++;
+            _quota    *= quotaGrowthPerWeek;
+            _weekScore = 0f;
+            _day       = 1;
+        }
+        else
+        {
+            _day++;
+        }
+
+        _rewardOptions = PickRandomCards(3);
+        _phase = Phase.Reward;
+
+        OnEconomyChanged?.Invoke();
+        OnPhaseChanged?.Invoke();
+    }
+
+    // Called by the reward-popup UI when the player picks one of the 3 cards.
+    public void ChooseReward(CardData card)
+    {
+        if (_phase != Phase.Reward || card == null) return;
+
+        _hand.Add(card);
+        _rewardOptions = null;
+        _phase = Phase.Build;
+
+        LogState($"Added '{card.cardName}' to hand from daily reward");
+        OnHandChanged?.Invoke();
+        OnPhaseChanged?.Invoke();
+    }
+
+    private List<CardData> PickRandomCards(int n)
+    {
+        var pool   = new List<CardData>(cardPool);
+        var result = new List<CardData>();
+        for (int i = 0; i < n && pool.Count > 0; i++)
+        {
+            int idx = UnityEngine.Random.Range(0, pool.Count);
+            result.Add(pool[idx]);
+            pool.RemoveAt(idx);
+        }
+        return result;
+    }
+
+    // ── Card play logic ──────────────────────────────────────────────────────
 
     private void TryPlaceEnclosure(Vector3 hit)
     {
-        if (_pendingEnclosure == null) return;
+        if (_pendingCard == null || _pendingEnclosureData == null) return;
         var cell = WorldToCell(hit);
-        if (!_model.CanPlaceEnclosure(cell, _pendingEnclosure.size)) return;
-        SpawnEnclosureView(_model.PlaceEnclosure(_pendingEnclosure, cell));
+        if (!_model.CanPlaceEnclosure(cell, _pendingEnclosureData.size))
+        {
+            Debug.Log($"[SkyZoo] Can't place '{_pendingCard.Data.cardName}' there — space is occupied or out of bounds.");
+            return;
+        }
+        if (!_mana.TrySpend(_pendingCard.Data.manaCost))
+        {
+            Debug.Log($"[SkyZoo] Not enough mana to play '{_pendingCard.Data.cardName}' (need {_pendingCard.Data.manaCost}, have {_mana.Current}).");
+            return;
+        }
+
+        var instance = _model.PlaceEnclosure(_pendingEnclosureData, cell, _pendingCard.Data.manaCost);
+        SpawnEnclosureView(instance);
+        RebuildPathViews(); // clears the view for any path piece the model just deleted underneath it
+        _hand.Remove(_pendingCard);
+        LogState($"Played '{_pendingCard.Data.cardName}' → placed enclosure");
+        SetMode(Mode.None);
+        OnHandChanged?.Invoke();
+        OnEconomyChanged?.Invoke();
+    }
+
+    private void TryApplyAmplify(Vector3 hit)
+    {
+        var card = (AmplifyCardData)_pendingCard.Data;
+        var cell = WorldToCell(hit);
+        if (!InCellBounds(cell)) return;
+        var target = _model.GetCell(cell.x, cell.y);
+        if (target == null) return;
+        if (!_mana.TrySpend(card.manaCost))
+        {
+            Debug.Log($"[SkyZoo] Not enough mana to play '{card.cardName}' (need {card.manaCost}, have {_mana.Current}).");
+            return;
+        }
+
+        if (card.durationDays <= 0) target.AddPermanentBonus(card.bonusAmount);
+        else                        target.AddTimedBonus(card.bonusAmount, _currentDay + card.durationDays);
+
+        _hand.Remove(_pendingCard);
+        LogState($"Played '{card.cardName}' → +{card.bonusAmount} bonus on enclosure at {target.GridPosition}");
+        SetMode(Mode.None);
+        OnHandChanged?.Invoke();
+        OnEconomyChanged?.Invoke();
+    }
+
+    private void TrySelectMoveSource(Vector3 hit)
+    {
+        var cell = WorldToCell(hit);
+        if (!InCellBounds(cell)) return;
+        var target = _model.GetCell(cell.x, cell.y);
+        if (target == null) return;
+
+        _moveSource = target;
+        _mode       = Mode.SelectMoveDestination;
+    }
+
+    private void TryCompleteMove(Vector3 hit)
+    {
+        var cell = WorldToCell(hit);
+        if (!InCellBounds(cell)) return;
+        if (cell == _moveSource.GridPosition) return; // no-op move, don't waste mana
+        if (!_model.CanPlaceEnclosureIgnoring(_moveSource, cell, _moveSource.Data.size)) return;
+        if (!_mana.TrySpend(_pendingCard.Data.manaCost))
+        {
+            Debug.Log($"[SkyZoo] Not enough mana to play '{_pendingCard.Data.cardName}' (need {_pendingCard.Data.manaCost}, have {_mana.Current}).");
+            return;
+        }
+
+        _model.MoveEnclosure(_moveSource, cell);
+        RefreshEnclosureView(_moveSource);
+        RebuildPathViews(); // clears the view for any path piece the model just deleted underneath it
+
+        _hand.Remove(_pendingCard);
+        LogState($"Played '{_pendingCard.Data.cardName}' → moved enclosure");
+        SetMode(Mode.None);
+        OnHandChanged?.Invoke();
+        OnEconomyChanged?.Invoke();
     }
 
     private void TryTogglePath(Vector3 hit)
@@ -234,12 +483,30 @@ public class GridView : MonoBehaviour
         if (!InCellBounds(cell)) return;
         var instance = _model.GetCell(cell.x, cell.y);
         if (instance == null) return;
+
         _model.RemoveEnclosure(instance);
+        int refund = Mathf.FloorToInt(instance.ManaCostPaid * enclosureRefundFraction);
+        _mana.Refund(refund);
+
         if (_enclosureViews.TryGetValue(instance, out var go))
         {
             Destroy(go);
             _enclosureViews.Remove(instance);
         }
+
+        LogState($"Removed '{instance.Data.enclosureName}' → refunded {refund} mana");
+        OnEconomyChanged?.Invoke();
+    }
+
+    // Prints current mana and hand contents — the only visibility into game
+    // state right now, since there's no HUD yet.
+    private void LogState(string action)
+    {
+        var names = new List<string>(_hand.Cards.Count);
+        foreach (var c in _hand.Cards) names.Add($"{c.Data.cardName}({c.Data.manaCost})");
+        string hand = names.Count > 0 ? string.Join(", ", names) : "(empty)";
+
+        Debug.Log($"[SkyZoo] {action} — mana {_mana.Current}/{_mana.Max} | hand: {hand}");
     }
 
     // ── Hover preview ────────────────────────────────────────────────────────
@@ -250,9 +517,9 @@ public class GridView : MonoBehaviour
         {
             case Mode.Enclosure:
                 _edgePreview.SetActive(false);
-                if (_pendingEnclosure == null) { _enclosurePreview.SetActive(false); break; }
+                if (_pendingEnclosureData == null) { _enclosurePreview.SetActive(false); break; }
                 var cell  = WorldToCell(hit);
-                var size  = _pendingEnclosure.size;
+                var size  = _pendingEnclosureData.size;
                 bool ok   = _model.CanPlaceEnclosure(cell, size);
                 PlaceFootprint(_enclosurePreview.transform,
                     CellCenterWorld(cell, size, YPreview),
@@ -272,6 +539,37 @@ public class GridView : MonoBehaviour
                 {
                     _edgePreview.SetActive(false);
                 }
+                break;
+
+            case Mode.SelectSingleTarget:
+            case Mode.SelectMoveSource:
+                _edgePreview.SetActive(false);
+                var targetCell = WorldToCell(hit);
+                var occupant   = InCellBounds(targetCell) ? _model.GetCell(targetCell.x, targetCell.y) : null;
+                if (occupant != null)
+                {
+                    PlaceFootprint(_enclosurePreview.transform,
+                        CellCenterWorld(occupant.GridPosition, occupant.Data.size, YPreview),
+                        (occupant.Data.size.x * cellSize - 0.08f, occupant.Data.size.y * cellSize - 0.08f));
+                    _enclosurePreview.SetActive(true);
+                    _enclosurePreviewSr.color = previewValid;
+                }
+                else
+                {
+                    _enclosurePreview.SetActive(false);
+                }
+                break;
+
+            case Mode.SelectMoveDestination:
+                _edgePreview.SetActive(false);
+                var destCell = WorldToCell(hit);
+                var moveSize = _moveSource.Data.size;
+                bool destOk  = _model.CanPlaceEnclosureIgnoring(_moveSource, destCell, moveSize);
+                PlaceFootprint(_enclosurePreview.transform,
+                    CellCenterWorld(destCell, moveSize, YPreview),
+                    (moveSize.x * cellSize - 0.08f, moveSize.y * cellSize - 0.08f));
+                _enclosurePreview.SetActive(true);
+                _enclosurePreviewSr.color = destOk ? previewValid : previewInvalid;
                 break;
 
             default:
@@ -322,27 +620,37 @@ public class GridView : MonoBehaviour
         }
     }
 
+    // World position an enclosure's view should sit at — prefab pivot vs. flat-quad footprint.
+    private Vector3 EnclosureWorldPosition(EnclosureInstance instance)
+    {
+        bool hasPrefab = instance.Data.prefab != null;
+        var  center    = CellCenterWorld(instance.GridPosition, instance.Data.size, hasPrefab ? 0f : YPath);
+        return hasPrefab ? center + instance.Data.prefabOffset : center;
+    }
+
     private void SpawnEnclosureView(EnclosureInstance instance)
     {
-        var cell   = instance.GridPosition;
-        var size   = instance.Data.size;
-        var center = CellCenterWorld(cell, size, 0f);
-
         GameObject go;
         if (instance.Data.prefab != null)
         {
-            go = Instantiate(instance.Data.prefab, center + instance.Data.prefabOffset, Quaternion.identity, transform);
-            go.name = $"Enclosure_{cell.x}_{cell.y}";
+            go = Instantiate(instance.Data.prefab, EnclosureWorldPosition(instance), Quaternion.identity, transform);
+            go.name = $"Enclosure_{instance.GridPosition.x}_{instance.GridPosition.y}";
         }
         else
         {
-            var (quad, _) = MakeFlatQuad($"Enclosure_{cell.x}_{cell.y}", instance.Data.footprintColor, 0);
-            PlaceFootprint(quad.transform, CellCenterWorld(cell, size, YPath),
-                (size.x * cellSize - 0.08f, size.y * cellSize - 0.08f));
+            var (quad, _) = MakeFlatQuad($"Enclosure_{instance.GridPosition.x}_{instance.GridPosition.y}", instance.Data.footprintColor, 0);
+            PlaceFootprint(quad.transform, EnclosureWorldPosition(instance),
+                (instance.Data.size.x * cellSize - 0.08f, instance.Data.size.y * cellSize - 0.08f));
             go = quad;
         }
 
         _enclosureViews[instance] = go;
+    }
+
+    private void RefreshEnclosureView(EnclosureInstance instance)
+    {
+        if (_enclosureViews.TryGetValue(instance, out var go))
+            go.transform.position = EnclosureWorldPosition(instance);
     }
 
     private void RebuildPathViews()
@@ -441,8 +749,12 @@ public class GridView : MonoBehaviour
     private void SetMode(Mode m)
     {
         _mode = m;
+        _pendingCard          = null;
+        _pendingEnclosureData = null;
+        _moveSource           = null;
         _enclosurePreview.SetActive(false);
         _edgePreview.SetActive(false);
+        OnPendingCardChanged?.Invoke();
     }
 
     private bool TryGetGroundHit(out Vector3 worldPos)

@@ -49,28 +49,72 @@ public class GridModel
         return true;
     }
 
-    public EnclosureInstance PlaceEnclosure(EnclosureData data, Vector2Int pos)
+    public EnclosureInstance PlaceEnclosure(EnclosureData data, Vector2Int pos, int manaCostPaid = 0)
     {
-        var instance = new EnclosureInstance(data, pos);
-        var size     = data.size;
+        var instance = new EnclosureInstance(data, pos) { ManaCostPaid = manaCostPaid };
+        RegisterEnclosureAt(instance, pos);
+        return instance;
+    }
+
+    public void RemoveEnclosure(EnclosureInstance instance) => UnregisterEnclosureAt(instance);
+
+    // Same as CanPlaceEnclosure, but treats cells occupied by `ignore` as
+    // empty — used when checking whether an enclosure can move to a new spot
+    // without its own current footprint counting against itself.
+    public bool CanPlaceEnclosureIgnoring(EnclosureInstance ignore, Vector2Int pos, Vector2Int size)
+    {
+        if (pos.x < 0 || pos.y < 0 || pos.x + size.x > Width || pos.y + size.y > Height)
+            return false;
+
+        for (int x = pos.x; x < pos.x + size.x; x++)
+            for (int y = pos.y; y < pos.y + size.y; y++)
+                if (_cells[x, y] != null && _cells[x, y] != ignore) return false;
+
+        return true;
+    }
+
+    // Relocates an enclosure to a new position, preserving its accumulated
+    // bonuses and mana-cost record. Fails if the destination isn't open.
+    public bool MoveEnclosure(EnclosureInstance instance, Vector2Int newPos)
+    {
+        if (!CanPlaceEnclosureIgnoring(instance, newPos, instance.Data.size)) return false;
+
+        UnregisterEnclosureAt(instance);
+        RegisterEnclosureAt(instance, newPos);
+        return true;
+    }
+
+    private void RegisterEnclosureAt(EnclosureInstance instance, Vector2Int pos)
+    {
+        instance.GridPosition = pos;
+        var size = instance.Data.size;
 
         for (int x = pos.x; x < pos.x + size.x; x++)
             for (int y = pos.y; y < pos.y + size.y; y++)
                 _cells[x, y] = instance;
 
+        // Interior edges are blocked from path placement — and any path piece
+        // already sitting on one (e.g. placed on empty land before this
+        // enclosure existed, or left over from before a move) is cleared, so
+        // nothing is ever trapped inside the enclosure's own footprint.
         for (int x = pos.x; x < pos.x + size.x; x++)
             for (int y = pos.y + 1; y < pos.y + size.y; y++)
+            {
                 _hBlocked[x, y] = true;
+                _hEdges[x, y]   = false;
+            }
 
         for (int x = pos.x + 1; x < pos.x + size.x; x++)
             for (int y = pos.y; y < pos.y + size.y; y++)
+            {
                 _vBlocked[x, y] = true;
+                _vEdges[x, y]   = false;
+            }
 
         _enclosures.Add(instance);
-        return instance;
     }
 
-    public void RemoveEnclosure(EnclosureInstance instance)
+    private void UnregisterEnclosureAt(EnclosureInstance instance)
     {
         var pos  = instance.GridPosition;
         var size = instance.Data.size;
@@ -135,5 +179,18 @@ public class GridModel
             if (_vEdges[pos.x + size.x, y]) count++;
         }
         return count;
+    }
+
+    public float GetEnclosureScore(EnclosureInstance instance)
+    {
+        int value = instance.Data.baseValue + instance.TotalBonus;
+        return value * Mathf.Pow(1.5f, CountPerimeterPathEdges(instance));
+    }
+
+    public float GetTotalScore()
+    {
+        float total = 0f;
+        foreach (var e in _enclosures) total += GetEnclosureScore(e);
+        return total;
     }
 }
