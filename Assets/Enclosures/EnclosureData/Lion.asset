@@ -10,11 +10,14 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 0a4520923ce932a44be5059af99caacb, type: 3}
-  m_Name: Snake
+  m_Name: Lion
   m_EditorClassIdentifier: Assembly-CSharp::EnclosureData
-  enclosureName: Snake Enclosure
-  size: {x: 1, y: 1}
-  baseValue: 5
-  prefab: {fileID: 3302826466289959117, guid: 02760877854546447a25a5db42748b47, type: 3}
+  enclosureName: Lion Enclosure
+  size: {x: 3, y: 3}
+  baseValue: 25
+  animalType: 0
+  biomeType: 0
+  ability: {fileID: 11400000, guid: ae371ebf55bc96e4386ab4a292152ccf, type: 2}
+  prefab: {fileID: 3302826466289959117, guid: 2a9bb97101e981e47a92f7b7008c46d5, type: 3}
   prefabOffset: {x: 0, y: 0, z: 0}
-  footprintColor: {r: 0, g: 0.38679248, b: 0.000000023054628, a: 0.6}
+  footprintColor: {r: 1, g: 0.7237591, b: 0.36320752, a: 0.6}

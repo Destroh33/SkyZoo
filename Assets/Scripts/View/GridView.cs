@@ -16,7 +16,7 @@ using UnityEngine.InputSystem;
 // (the daily 3-card choice) the board is frozen until ChooseReward is called.
 public class GridView : MonoBehaviour
 {
-    public enum Phase { Build, Reward }
+    public enum Phase { Build, Scoring, Reward }
 
     [Header("Grid Settings")]
     [SerializeField] private int   gridWidth  = 10;
@@ -35,9 +35,19 @@ public class GridView : MonoBehaviour
     [SerializeField] private Color previewValid   = new(1f,    1f,    1f,    0.45f);
     [SerializeField] private Color previewInvalid = new(1f,    0.25f, 0.25f, 0.45f);
     [SerializeField] private Color edgeHoverColor = new(1f,    0.85f, 0.2f,  0.5f);
+    [SerializeField] private Color startVertexColor = new(0.2f, 1f,   0.2f,  1f);
+    [SerializeField] private Color endVertexColor   = new(1f,   0.2f, 0.2f,  1f);
     [SerializeField] private float lineThickness  = 0.05f;
     [SerializeField] private float pathThickness  = 0.18f;
     [SerializeField] private float edgeSnapDist   = 0.25f;
+    [SerializeField] private float vertexMarkerSize = 0.3f;
+
+    [Header("Paths")]
+    [SerializeField] private int maxPaths = 8; // global pool, shared for the whole game — never refills
+
+    [Header("Score Wave")]
+    [SerializeField] private float scoreWaveStagger = 0.25f; // seconds between each enclosure's popup, ordered by distance from the start vertex
+    [SerializeField] private float endOfDayPause    = 2f;    // pause after the wave (and week/quota result) before the reward screen appears
 
     [Header("Camera")]
     [SerializeField] private float camPitch       = 30f;
@@ -112,6 +122,8 @@ public class GridView : MonoBehaviour
     public int   Mana        => _mana.Current;
     public int   MaxMana     => _mana.Max;
     public IReadOnlyList<CardData> RewardOptions => _rewardOptions;
+    public int   PathsRemaining => _model.PathsRemaining;
+    public int   MaxPaths        => _model.MaxPaths;
 
     // World-space position of grid corner (0,0) — set in Start from transform.position
     private Vector3 _origin;
@@ -158,7 +170,7 @@ public class GridView : MonoBehaviour
             0f,
             -gridHeight * cellSize * 0.5f);
 
-        _model       = new GridModel(gridWidth, gridHeight);
+        _model       = new GridModel(gridWidth, gridHeight, maxPaths);
         _whiteSprite = MakeWhiteSprite();
 
         _mana  = new ManaPool(startingMana);
@@ -198,6 +210,7 @@ public class GridView : MonoBehaviour
 
         SpawnIsland();
         BuildGridLines();
+        SpawnPathEndpointMarkers();
 
         (_enclosurePreview, _enclosurePreviewSr) = MakeFlatQuad("Preview_Enclosure", Color.clear,    SortPreview);
         _enclosurePreview.SetActive(false);
@@ -320,20 +333,51 @@ public class GridView : MonoBehaviour
     // Ends the build phase for today: scores the grid, advances the day/week
     // counters (rolling over and scaling the quota at week's end), refills
     // mana, expires timed bonuses, and rolls the 3-card daily reward.
+    // Scoring plays out as a staggered wave of popups (nearest the start
+    // vertex first) rather than adding instantly — see ScoreDayCoroutine.
     public void AdvanceDayPhase()
     {
         if (_phase != Phase.Build) return;
 
-        SetMode(Mode.None); // clear any pending card/targeting before ending the day
+        if (!_model.HasValidPath())
+        {
+            Debug.Log("[SkyZoo] Can't advance — no valid path from start to end.");
+            return;
+        }
 
+        SetMode(Mode.None); // clear any pending card/targeting before ending the day
+        _phase = Phase.Scoring;
+        OnPhaseChanged?.Invoke();
+
+        StartCoroutine(ScoreDayCoroutine());
+    }
+
+    private System.Collections.IEnumerator ScoreDayCoroutine()
+    {
         _currentDay++;
-        float dayScore = _model.GetTotalScore();
-        _weekScore += dayScore;
+
+        Vector3 startWorld = G2W(_model.StartVertex.x * cellSize, _model.StartVertex.y * cellSize, YPath);
+
+        var ordered = new List<EnclosureInstance>(_model.Enclosures);
+        ordered.Sort((a, b) =>
+            Vector3.Distance(EnclosureWorldPosition(a), startWorld)
+                .CompareTo(Vector3.Distance(EnclosureWorldPosition(b), startWorld)));
+
+        foreach (var instance in ordered)
+        {
+            float score = _model.GetEnclosureScore(instance);
+            _weekScore += score;
+
+            ScorePopup.Spawn(EnclosureWorldPosition(instance) + Vector3.up, score, transform);
+            OnEconomyChanged?.Invoke();
+
+            if (scoreWaveStagger > 0f) yield return new WaitForSeconds(scoreWaveStagger);
+        }
 
         foreach (var e in _model.Enclosures) e.ExpireBonuses(_currentDay);
         _mana.RefillForNewDay();
 
-        LogState($"Day {_day}/{daysPerWeek} scored {dayScore:0.#} → week total {_weekScore:0.#}/{_quota:0.#}");
+        LogState($"Day {_day}/{daysPerWeek} scored → week total {_weekScore:0.#}/{_quota:0.#}");
 
         if (_day >= daysPerWeek)
         {
@@ -352,10 +396,12 @@ public class GridView : MonoBehaviour
             _day++;
         }
 
+        OnEconomyChanged?.Invoke();
+
+        if (endOfDayPause > 0f) yield return new WaitForSeconds(endOfDayPause);
+
         _rewardOptions = PickRandomCards(3);
         _phase = Phase.Reward;
-
-        OnEconomyChanged?.Invoke();
         OnPhaseChanged?.Invoke();
     }
 
@@ -618,6 +664,21 @@ public class GridView : MonoBehaviour
             go.transform.position   = G2W(col * cellSize, h * 0.5f, YGrid);
             go.transform.localScale = new Vector3(lineThickness, h, 1f);
         }
+    }
+
+    // Marks the fixed start/end grid-vertices that a path must connect —
+    // purely visual, positions come from the model's auto-picked vertices.
+    private void SpawnPathEndpointMarkers()
+    {
+        SpawnVertexMarker("PathStart", _model.StartVertex, startVertexColor);
+        SpawnVertexMarker("PathEnd",   _model.EndVertex,   endVertexColor);
+    }
+
+    private void SpawnVertexMarker(string objName, Vector2Int vertex, Color color)
+    {
+        var (go, _) = MakeFlatQuad(objName, color, SortPathEdges + 1);
+        go.transform.position   = G2W(vertex.x * cellSize, vertex.y * cellSize, YPath);
+        go.transform.localScale = new Vector3(vertexMarkerSize, vertexMarkerSize, 1f);
     }
 
     // World position an enclosure's view should sit at — prefab pivot vs. flat-quad footprint.

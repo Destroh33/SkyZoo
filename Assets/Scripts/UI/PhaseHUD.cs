@@ -26,6 +26,7 @@ public class PhaseHUD : MonoBehaviour
     [SerializeField] private TMP_Text quotaText;
     [SerializeField] private TMP_Text scoreText;
     [SerializeField] private TMP_Text dayText;
+    [SerializeField] private TMP_Text pathsText; // optional — leave unassigned if not built yet
 
     [Header("Reward Popup (built at runtime)")]
     [SerializeField] private float rewardCardWidth  = 220f;
@@ -60,6 +61,7 @@ public class PhaseHUD : MonoBehaviour
         quotaText.text = $"Quota: {gridView.Quota:0}";
         scoreText.text = $"Score: {gridView.WeekScore:0}";
         dayText.text   = $"Day {gridView.Day} / {gridView.DaysPerWeek}";
+        if (pathsText != null) pathsText.text = $"Paths: {gridView.PathsRemaining}/{gridView.MaxPaths}";
     }
 
     private void HandlePhaseChanged()
