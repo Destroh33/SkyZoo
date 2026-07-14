@@ -1,5 +1,6 @@
 public enum AnimalType
 {
     Predator,
-    Prey
+    Prey,
+    Neutral
 }

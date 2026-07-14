@@ -15,7 +15,7 @@ MonoBehaviour:
   enclosureName: Snake Enclosure
   size: {x: 1, y: 1}
   baseValue: 5
-  animalType: 1
+  animalType: 0
   biomeType: 1
   ability: {fileID: 11400000, guid: 5427eb46dc6ff454c91773cb8219848e, type: 2}
   prefab: {fileID: 3302826466289959117, guid: 02760877854546447a25a5db42748b47, type: 3}

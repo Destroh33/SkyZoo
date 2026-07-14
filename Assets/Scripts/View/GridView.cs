@@ -355,6 +355,7 @@ public class GridView : MonoBehaviour
     private System.Collections.IEnumerator ScoreDayCoroutine()
     {
         _currentDay++;
+        _model.CurrentDay = _currentDay;
 
         Vector3 startWorld = G2W(_model.StartVertex.x * cellSize, _model.StartVertex.y * cellSize, YPath);
 

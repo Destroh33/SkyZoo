@@ -15,7 +15,7 @@ MonoBehaviour:
   enclosureName: Seal Enclosure
   size: {x: 1, y: 3}
   baseValue: 10
-  animalType: 1
+  animalType: 2
   biomeType: 2
   ability: {fileID: 11400000, guid: e2900a0b4c7ade84fb2b54b8baee85e8, type: 2}
   prefab: {fileID: 3302826466289959117, guid: 0d9f100a13861b1498f080093de88ada, type: 3}

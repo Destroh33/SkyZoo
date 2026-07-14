@@ -35,6 +35,10 @@ public class GridModel
     public Vector2Int StartVertex { get; }
     public Vector2Int EndVertex   { get; }
 
+    // Ever-increasing day counter, mirrored from GridView's _currentDay —
+    // abilities that care about day parity (e.g. the zebra) read this.
+    public int CurrentDay { get; set; }
+
     public GridModel(int width, int height, int maxPaths = 8)
     {
         Width  = width;
