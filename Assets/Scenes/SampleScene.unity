@@ -629,9 +629,15 @@ MonoBehaviour:
   previewValid: {r: 1, g: 1, b: 1, a: 0.5}
   previewInvalid: {r: 1, g: 0.2, b: 0.2, a: 0.5}
   edgeHoverColor: {r: 1, g: 0.85, b: 0.2, a: 0.5}
+  startVertexColor: {r: 0.2, g: 1, b: 0.2, a: 1}
+  endVertexColor: {r: 1, g: 0.2, b: 0.2, a: 1}
   lineThickness: 0.04
   pathThickness: 0.2
   edgeSnapDist: 0.22
+  vertexMarkerSize: 0.3
+  maxPaths: 15
+  scoreWaveStagger: 0.25
+  endOfDayPause: 2
   camPitch: 30
   camYaw: 45
   camZoom: 0.55
@@ -686,6 +692,7 @@ MonoBehaviour:
   quotaText: {fileID: 1777228511}
   scoreText: {fileID: 1960052737}
   dayText: {fileID: 1912559601}
+  pathsText: {fileID: 0}
   rewardCardWidth: 220
   rewardCardHeight: 320
   rewardCardGap: 40
