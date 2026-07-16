@@ -14,6 +14,16 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::EnclosureData
   enclosureName: Lion Enclosure
   size: {x: 3, y: 3}
+  cells:
+  - {x: -1, y: -1}
+  - {x: -1, y: 0}
+  - {x: -1, y: 1}
+  - {x: 0, y: -1}
+  - {x: 0, y: 0}
+  - {x: 0, y: 1}
+  - {x: 1, y: -1}
+  - {x: 1, y: 0}
+  - {x: 1, y: 1}
   baseValue: 25
   animalType: 0
   biomeType: 0

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 [CreateAssetMenu(fileName = "EnclosureData", menuName = "SkyZoo/Enclosure Data")]
@@ -5,6 +6,7 @@ public class EnclosureData : ScriptableObject
 {
     public string     enclosureName;
     public Vector2Int size      = Vector2Int.one;
+    public List<Vector2> cells = new();
     public int        baseValue = 10;
     public AnimalType animalType;
     public BiomeType  biomeType;

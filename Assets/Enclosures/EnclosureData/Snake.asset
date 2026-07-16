@@ -14,6 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::EnclosureData
   enclosureName: Snake Enclosure
   size: {x: 1, y: 1}
+  cells:
+  - {x: 0, y: 0}
   baseValue: 5
   animalType: 0
   biomeType: 1
