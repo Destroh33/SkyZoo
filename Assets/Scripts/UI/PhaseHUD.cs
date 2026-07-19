@@ -37,7 +37,7 @@ public class PhaseHUD : MonoBehaviour
 
     void Start()
     {
-        if (gridView == null) gridView = FindFirstObjectByType<GridView>();
+        if (gridView == null) gridView = FindAnyObjectByType<GridView>();
 
         advanceButton.onClick.AddListener(gridView.AdvanceDayPhase);
 

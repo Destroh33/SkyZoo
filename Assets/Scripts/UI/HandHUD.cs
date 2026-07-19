@@ -32,7 +32,7 @@ public class HandHUD : MonoBehaviour
 
     void Start()
     {
-        if (gridView == null) gridView = FindFirstObjectByType<GridView>();
+        if (gridView == null) gridView = FindAnyObjectByType<GridView>();
 
         EnsureEventSystem();
         BuildCanvas();
@@ -52,7 +52,7 @@ public class HandHUD : MonoBehaviour
 
     private static void EnsureEventSystem()
     {
-        if (FindFirstObjectByType<EventSystem>() != null) return;
+        if (FindAnyObjectByType<EventSystem>() != null) return;
 
         var go = new GameObject("EventSystem", typeof(EventSystem), typeof(InputSystemUIInputModule));
         go.GetComponent<InputSystemUIInputModule>().AssignDefaultActions();
