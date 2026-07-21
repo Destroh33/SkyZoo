@@ -1,0 +1,18 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 22cc33dd44ee55ff66001122334a11bb, type: 3}
+  m_Name: ZebraCard
+  m_EditorClassIdentifier: Assembly-CSharp::EnclosureCardData
+  cardName: Zebra Enclosure
+  description: Place a Zebra (2x3). +8 points on odd days.
+  manaCost: 2
+  enclosure: {fileID: 11400000, guid: c1d2e3f4a5b6011223344556677889a2, type: 2}

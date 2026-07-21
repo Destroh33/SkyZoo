@@ -682,11 +682,17 @@ public class GridView : MonoBehaviour
         go.transform.localScale = new Vector3(vertexMarkerSize, vertexMarkerSize, 1f);
     }
 
-    // World position an enclosure's view should sit at — prefab pivot vs. flat-quad footprint.
+    // Height of the placeholder cube used when an enclosure has no prefab.
+    private const float PlaceholderCubeHeight = 0.2f;
+
+    // World position an enclosure's view should sit at — prefab pivot vs.
+    // placeholder cube. The cube's pivot is its center, so it's raised by half
+    // its height to rest on the ground.
     private Vector3 EnclosureWorldPosition(EnclosureInstance instance)
     {
         bool hasPrefab = instance.Data.prefab != null;
-        var  center    = CellCenterWorld(instance.GridPosition, instance.Data.size, hasPrefab ? 0f : YPath);
+        float worldY   = hasPrefab ? 0f : PlaceholderCubeHeight * 0.5f;
+        var   center   = CellCenterWorld(instance.GridPosition, instance.Data.size, worldY);
         return hasPrefab ? center + instance.Data.prefabOffset : center;
     }
 
@@ -700,10 +706,19 @@ public class GridView : MonoBehaviour
         }
         else
         {
-            var (quad, _) = MakeFlatQuad($"Enclosure_{instance.GridPosition.x}_{instance.GridPosition.y}", instance.Data.footprintColor, 0);
-            PlaceFootprint(quad.transform, EnclosureWorldPosition(instance),
-                (instance.Data.size.x * cellSize - 0.08f, instance.Data.size.y * cellSize - 0.08f));
-            go = quad;
+            // No prefab: a flat cube sized to the footprint (0.2 tall), shrunk to
+            // 0.9 so it sits slightly inside its cells and gaps show between neighbours.
+            go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = $"Enclosure_{instance.GridPosition.x}_{instance.GridPosition.y}";
+            go.transform.SetParent(transform);
+            go.transform.position   = EnclosureWorldPosition(instance);
+            go.transform.localScale = new Vector3(
+                instance.Data.size.x * cellSize,
+                PlaceholderCubeHeight,
+                instance.Data.size.y * cellSize) * 0.9f;
+
+            var mat = go.GetComponent<Renderer>().material;
+            mat.color = instance.Data.footprintColor;
         }
 
         _enclosureViews[instance] = go;
