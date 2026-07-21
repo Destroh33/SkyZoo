@@ -650,6 +650,8 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 00aa11bb22cc33dd44ee55ff66778899, type: 2}
   - {fileID: 11400000, guid: aa11bb22cc33dd44ee55ff6677889900, type: 2}
   - {fileID: 11400000, guid: 11bb22cc33dd44ee55ff66778899aa00, type: 2}
+  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a2, type: 2}
+  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a5, type: 2}
   daysPerWeek: 5
   startingQuota: 50
   quotaGrowthPerWeek: 1.25
@@ -659,6 +661,13 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 00aa11bb22cc33dd44ee55ff66778899, type: 2}
   - {fileID: 11400000, guid: aa11bb22cc33dd44ee55ff6677889900, type: 2}
   - {fileID: 11400000, guid: 11bb22cc33dd44ee55ff66778899aa00, type: 2}
+  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a1, type: 2}
+  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a2, type: 2}
+  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a3, type: 2}
+  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a4, type: 2}
+  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a5, type: 2}
+  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a6, type: 2}
+  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a7, type: 2}
 --- !u!4 &999632218
 Transform:
   m_ObjectHideFlags: 0
