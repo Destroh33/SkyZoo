@@ -10,7 +10,7 @@ using UnityEngine.InputSystem;
 //   P     path placement mode
 //   N     advance day (debug: same as clicking the Advance button)
 //   Esc   cancel / clear mode
-//   LMB   place enclosure / toggle path edge / pick target(s) for a card
+//   LMB   place enclosure / toggle or drag path edges / pick target(s) for a card
 //   RMB   remove enclosure under cursor (refunds partial mana)
 // All grid/hand interaction is gated to Phase.Build — during Phase.Reward
 // (the daily 3-card choice) the board is frozen until ChooseReward is called.
@@ -40,6 +40,8 @@ public class GridView : MonoBehaviour
     [SerializeField] private float lineThickness  = 0.05f;
     [SerializeField] private float pathThickness  = 0.18f;
     [SerializeField] private float edgeSnapDist   = 0.25f;
+    [SerializeField] private float dragEdgeSnapDist = 0.14f;
+    [SerializeField] private float dragDirectionLockDist = 0.2f;
     [SerializeField] private float vertexMarkerSize = 0.3f;
 
     [Header("Paths")]
@@ -88,6 +90,13 @@ public class GridView : MonoBehaviour
     private InputAction _selectSlotAction;
     private InputAction _toggleCamAction;
     private InputAction _advanceDayAction;
+
+    private bool _isPathDragging;
+    private bool _hasPathDragDirectionLock;
+    private bool _pathDragHorizontal;
+    private Vector2 _pathDragAnchorLocal;
+    private readonly HashSet<Vector2Int> _draggedPathEdgesH = new();
+    private readonly HashSet<Vector2Int> _draggedPathEdgesV = new();
 
     // ── Runtime state ────────────────────────────────────────────────────────
     private GridModel _model;
@@ -228,8 +237,24 @@ public class GridView : MonoBehaviour
 
     void Update()
     {
-        if (TryGetGroundHit(out Vector3 hit))
+        bool hasHit = TryGetGroundHit(out Vector3 hit);
+        if (hasHit)
             UpdateHoverPreview(hit);
+
+        if (_phase != Phase.Build || _mode != Mode.Path) return;
+
+        if (_clickAction.IsPressed())
+        {
+            if (hasHit && !_isPathDragging)
+                BeginPathDrag(hit);
+
+            if (hasHit)
+                TryPaintPath(hit);
+        }
+        else if (_isPathDragging)
+        {
+            ResetPathDragState();
+        }
     }
 
     // ── Input callbacks ──────────────────────────────────────────────────────
@@ -300,6 +325,7 @@ public class GridView : MonoBehaviour
     {
         if (_phase != Phase.Build) return;
         _mode = Mode.Path;
+        ResetPathDragState();
         _enclosurePreview.SetActive(false);
     }
 
@@ -315,7 +341,10 @@ public class GridView : MonoBehaviour
         switch (_mode)
         {
             case Mode.Enclosure:            TryPlaceEnclosure(hit);   break;
-            case Mode.Path:                 TryTogglePath(hit);       break;
+            case Mode.Path:
+                BeginPathDrag(hit);
+                TryTogglePath(hit);
+                break;
             case Mode.SelectSingleTarget:    TryApplyAmplify(hit);    break;
             case Mode.SelectMoveSource:      TrySelectMoveSource(hit); break;
             case Mode.SelectMoveDestination: TryCompleteMove(hit);     break;
@@ -521,7 +550,41 @@ public class GridView : MonoBehaviour
     {
         if (!TrySnapToEdge(hit, out bool horiz, out int ex, out int ey)) return;
         bool toggled = horiz ? _model.ToggleHEdge(ex, ey) : _model.ToggleVEdge(ex, ey);
+        TrackDraggedPathEdge(horiz, ex, ey);
         if (toggled) RebuildPathViews();
+    }
+
+    private void TryPaintPath(Vector3 hit)
+    {
+        if (!TrySnapToEdgeAligned(hit, out bool horiz, out int ex, out int ey)) return;
+        if (HasDraggedPathEdge(horiz, ex, ey)) return;
+
+        bool placed = horiz ? _model.PlaceHEdge(ex, ey) : _model.PlaceVEdge(ex, ey);
+        TrackDraggedPathEdge(horiz, ex, ey);
+        if (placed) RebuildPathViews();
+    }
+
+    private void BeginPathDrag(Vector3 hit)
+    {
+        if (_isPathDragging) return;
+        _isPathDragging = true;
+        _hasPathDragDirectionLock = false;
+        _pathDragAnchorLocal = new Vector2((hit.x - _origin.x) / cellSize, (hit.z - _origin.z) / cellSize);
+        _draggedPathEdgesH.Clear();
+        _draggedPathEdgesV.Clear();
+    }
+
+    private void TrackDraggedPathEdge(bool horiz, int ex, int ey)
+    {
+        var edge = new Vector2Int(ex, ey);
+        if (horiz) _draggedPathEdgesH.Add(edge);
+        else       _draggedPathEdgesV.Add(edge);
+    }
+
+    private bool HasDraggedPathEdge(bool horiz, int ex, int ey)
+    {
+        var edge = new Vector2Int(ex, ey);
+        return horiz ? _draggedPathEdgesH.Contains(edge) : _draggedPathEdgesV.Contains(edge);
     }
 
     private void TryRemoveAt(Vector3 hit)
@@ -780,6 +843,9 @@ public class GridView : MonoBehaviour
     // ── Edge snapping ─────────────────────────────────────────────────────────
 
     private bool TrySnapToEdge(Vector3 hit, out bool horiz, out int ex, out int ey)
+        => TrySnapToEdge(hit, edgeSnapDist, out horiz, out ex, out ey);
+
+    private bool TrySnapToEdge(Vector3 hit, float snapDist, out bool horiz, out int ex, out int ey)
     {
         // Convert world hit to grid-local coords
         float gx = (hit.x - _origin.x) / cellSize;
@@ -789,19 +855,72 @@ public class GridView : MonoBehaviour
         int   hy = Mathf.RoundToInt(gz);
         float dh = Mathf.Abs(gz - hy) * cellSize;
         bool hOk = hx >= 0 && hx < _model.Width && hy >= 0 && hy <= _model.Height
-                   && dh < edgeSnapDist && !_model.IsHEdgeBlocked(hx, hy);
+                   && dh < snapDist && !_model.IsHEdgeBlocked(hx, hy);
 
         int   vx = Mathf.RoundToInt(gx);
         int   vy = Mathf.FloorToInt(gz);
         float dv = Mathf.Abs(gx - vx) * cellSize;
         bool vOk = vx >= 0 && vx <= _model.Width && vy >= 0 && vy < _model.Height
-                   && dv < edgeSnapDist && !_model.IsVEdgeBlocked(vx, vy);
+                   && dv < snapDist && !_model.IsVEdgeBlocked(vx, vy);
 
         if (hOk && (!vOk || dh <= dv)) { horiz = true;  ex = hx; ey = hy; return true; }
         if (vOk)                        { horiz = false; ex = vx; ey = vy; return true; }
 
         horiz = false; ex = 0; ey = 0;
         return false;
+    }
+
+    private bool TrySnapToEdgeAligned(Vector3 hit, out bool horiz, out int ex, out int ey)
+    {
+        float gx = (hit.x - _origin.x) / cellSize;
+        float gz = (hit.z - _origin.z) / cellSize;
+
+        if (!_hasPathDragDirectionLock)
+        {
+            float dx = Mathf.Abs(gx - _pathDragAnchorLocal.x);
+            float dz = Mathf.Abs(gz - _pathDragAnchorLocal.y);
+            if (Mathf.Max(dx, dz) < dragDirectionLockDist)
+            {
+                horiz = false; ex = 0; ey = 0;
+                return false;
+            }
+
+            _pathDragHorizontal = dx >= dz;
+            _hasPathDragDirectionLock = true;
+        }
+
+        if (_pathDragHorizontal)
+        {
+            int hx = Mathf.FloorToInt(gx);
+            int hy = Mathf.RoundToInt(gz);
+            float dh = Mathf.Abs(gz - hy) * cellSize;
+            bool hOk = hx >= 0 && hx < _model.Width && hy >= 0 && hy <= _model.Height
+                       && dh < dragEdgeSnapDist && !_model.IsHEdgeBlocked(hx, hy);
+            if (!hOk)
+            {
+                horiz = false; ex = 0; ey = 0;
+                return false;
+            }
+
+            horiz = true; ex = hx; ey = hy;
+            return true;
+        }
+        else
+        {
+            int vx = Mathf.RoundToInt(gx);
+            int vy = Mathf.FloorToInt(gz);
+            float dv = Mathf.Abs(gx - vx) * cellSize;
+            bool vOk = vx >= 0 && vx <= _model.Width && vy >= 0 && vy < _model.Height
+                       && dv < dragEdgeSnapDist && !_model.IsVEdgeBlocked(vx, vy);
+            if (!vOk)
+            {
+                horiz = false; ex = 0; ey = 0;
+                return false;
+            }
+
+            horiz = false; ex = vx; ey = vy;
+            return true;
+        }
     }
 
     // ── Camera ────────────────────────────────────────────────────────────────
@@ -831,7 +950,18 @@ public class GridView : MonoBehaviour
         _moveSource           = null;
         _enclosurePreview.SetActive(false);
         _edgePreview.SetActive(false);
+        ResetPathDragState();
         OnPendingCardChanged?.Invoke();
+    }
+
+    private void ResetPathDragState()
+    {
+        _isPathDragging = false;
+        _hasPathDragDirectionLock = false;
+        _pathDragHorizontal = false;
+        _pathDragAnchorLocal = default;
+        _draggedPathEdgesH.Clear();
+        _draggedPathEdgesV.Clear();
     }
 
     private bool TryGetGroundHit(out Vector3 worldPos)

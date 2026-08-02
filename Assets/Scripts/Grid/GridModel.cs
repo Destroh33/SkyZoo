@@ -167,9 +167,7 @@ public class GridModel
     // interior, or (when placing a new path) the path budget is exhausted.
     public bool ToggleHEdge(int x, int y)
     {
-        if (x < 0 || x >= Width  || y < 0 || y > Height)  return false;
-        if (_hBlocked[x, y]) return false;
-        if (!_hEdges[x, y] && PathsRemaining <= 0) return false;
+        if (!CanToggleHEdge(x, y)) return false;
 
         _hEdges[x, y] = !_hEdges[x, y];
         PathsUsed    += _hEdges[x, y] ? 1 : -1;
@@ -178,13 +176,61 @@ public class GridModel
 
     public bool ToggleVEdge(int x, int y)
     {
-        if (x < 0 || x > Width || y < 0 || y >= Height) return false;
-        if (_vBlocked[x, y]) return false;
-        if (!_vEdges[x, y] && PathsRemaining <= 0) return false;
+        if (!CanToggleVEdge(x, y)) return false;
 
         _vEdges[x, y] = !_vEdges[x, y];
         PathsUsed    += _vEdges[x, y] ? 1 : -1;
         return true;
+    }
+
+    // Drag placement uses these helpers so moving the pointer across edges can
+    // paint new path segments without toggling existing ones off.
+    public bool PlaceHEdge(int x, int y)
+    {
+        if (!CanPlaceHEdge(x, y)) return false;
+
+        _hEdges[x, y] = true;
+        PathsUsed++;
+        return true;
+    }
+
+    public bool PlaceVEdge(int x, int y)
+    {
+        if (!CanPlaceVEdge(x, y)) return false;
+
+        _vEdges[x, y] = true;
+        PathsUsed++;
+        return true;
+    }
+
+    private bool CanToggleHEdge(int x, int y)
+    {
+        return x >= 0 && x < Width && y >= 0 && y <= Height
+            && !_hBlocked[x, y]
+            && (_hEdges[x, y] || PathsRemaining > 0);
+    }
+
+    private bool CanToggleVEdge(int x, int y)
+    {
+        return x >= 0 && x <= Width && y >= 0 && y < Height
+            && !_vBlocked[x, y]
+            && (_vEdges[x, y] || PathsRemaining > 0);
+    }
+
+    private bool CanPlaceHEdge(int x, int y)
+    {
+        return x >= 0 && x < Width && y >= 0 && y <= Height
+            && !_hBlocked[x, y]
+            && !_hEdges[x, y]
+            && PathsRemaining > 0;
+    }
+
+    private bool CanPlaceVEdge(int x, int y)
+    {
+        return x >= 0 && x <= Width && y >= 0 && y < Height
+            && !_vBlocked[x, y]
+            && !_vEdges[x, y]
+            && PathsRemaining > 0;
     }
 
     // ── Scoring helpers ───────────────────────────────────────────────────────

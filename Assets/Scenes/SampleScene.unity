@@ -634,6 +634,8 @@ MonoBehaviour:
   lineThickness: 0.04
   pathThickness: 0.2
   edgeSnapDist: 0.22
+  dragEdgeSnapDist: 0.08
+  dragDirectionLockDist: 0.2
   vertexMarkerSize: 0.3
   maxPaths: 15
   scoreWaveStagger: 0.25
