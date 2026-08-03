@@ -10,8 +10,11 @@ public class ShopUI : MonoBehaviour
     [Header("UI Elements")]
     [SerializeField] private List<Button> buyCardsButtons;
     [SerializeField] private List<Button> buyLandButtons;
-    [SerializeField] private Button gachaPackOneBtn;
-    [SerializeField] private Button gachaPackTwoBtn;
+    //[SerializeField] private List<Button> gachaPackButtons;
+
+    [SerializeField] private Transform buyCardsGrid;
+    [SerializeField] private Transform buyLandGrid;
+
 
     private Shop activeShop;
     private GameManager gameManagerInstance;
@@ -19,6 +22,12 @@ public class ShopUI : MonoBehaviour
     void Awake()
     {
         gameManagerInstance = GameManager.instance != null ? GameManager.instance : FindAnyObjectByType<GameManager>();
+        buyCardsButtons ??= new List<Button>();
+        buyLandButtons ??= new List<Button>();
+
+        CacheBuyCardButtons();
+        CacheBuyLandButtons();
+
         activeShop = new Shop(shopItemsData, buyCardsButtons.Count, buyLandButtons.Count, 1);
         SetupShopButtons();
         UpdateShopVisuals();
@@ -50,17 +59,17 @@ public class ShopUI : MonoBehaviour
             buyLandButtons[index].onClick.AddListener(() => OnBuyLandClicked(index));
         }
 
-        if (gachaPackOneBtn != null)
-        {
-            gachaPackOneBtn.onClick.RemoveAllListeners();
-            gachaPackOneBtn.onClick.AddListener(OnBuyGachaPackOne);
-        }
+        //if (gachaPackOneBtn != null)
+        //{
+        //    gachaPackOneBtn.onClick.RemoveAllListeners();
+        //    gachaPackOneBtn.onClick.AddListener(OnBuyGachaPackOne);
+        //}
 
-        if (gachaPackTwoBtn != null)
-        {
-            gachaPackTwoBtn.onClick.RemoveAllListeners();
-            gachaPackTwoBtn.onClick.AddListener(OnBuyGachaPackTwo);
-        }
+        //if (gachaPackTwoBtn != null)
+        //{
+        //    gachaPackTwoBtn.onClick.RemoveAllListeners();
+        //    gachaPackTwoBtn.onClick.AddListener(OnBuyGachaPackTwo);
+        //}
     }
 
     // --- Button Click Handlers ---
@@ -79,16 +88,6 @@ public class ShopUI : MonoBehaviour
         {
             UpdateShopVisuals();
         }
-    }
-
-    private void OnBuyGachaPackOne()
-    {
-        //TODO: Implement Gacha Pack One logic in Shop.cs
-    }
-
-    private void OnBuyGachaPackTwo()
-    {
-        //TODO: Implement Gacha Pack Two logic in Shop.cs
     }
 
     // --- Visual Updates ---
@@ -118,7 +117,24 @@ public class ShopUI : MonoBehaviour
         bool canAfford = hasOffer && gm != null && gm.CanAfford(gm.BuyCardCost);
 
         button.interactable = hasOffer && canAfford;
+        UpdateCardButtonVisual(button, card);
         SetButtonLabel(button, hasOffer ? $"{card.cardName}\nCost: {(gm != null ? gm.BuyCardCost : 0)}" : "Sold Out");
+    }
+
+    private void UpdateCardButtonVisual(Button button, CardData card)
+    {
+        var image = button.GetComponent<Image>();
+        if (image == null) return;
+
+        Sprite sprite = null;
+        if (card is EnclosureCardData enclosureCard && enclosureCard.enclosure != null && enclosureCard.enclosure.cardShopImage != null)
+        {
+            sprite = enclosureCard.enclosure.cardShopImage.sprite;
+        }
+
+        image.sprite = sprite;
+        image.enabled = sprite != null;
+        image.preserveAspect = true;
     }
 
     private void UpdateLandButton(Button button, int index)
@@ -143,6 +159,58 @@ public class ShopUI : MonoBehaviour
         }
     }
 
+    private void CacheBuyCardButtons()
+    {
+        if (buyCardsGrid == null) return;
+
+        if (buyCardsButtons == null)
+        {
+            buyCardsButtons = new List<Button>();
+        }
+        else
+        {
+            buyCardsButtons.Clear();
+        }
+
+        for (int i = 0; i < buyCardsGrid.childCount; i++)
+        {
+            var child = buyCardsGrid.GetChild(i);
+            if (child == null) continue;
+
+            var button = child.GetComponent<Button>();
+            if (button != null)
+            {
+                buyCardsButtons.Add(button);
+            }
+        }
+    }
+
+    private void CacheBuyLandButtons()
+    {
+        if (buyLandGrid == null) return;
+
+        if (buyLandButtons == null)
+        {
+            buyLandButtons = new List<Button>();
+        }
+        else
+        {
+            buyLandButtons.Clear();
+        }
+
+        for (int i = 0; i < buyLandGrid.childCount; i++)
+        {
+            var child = buyLandGrid.GetChild(i);
+            if (child == null) continue;
+
+            var button = child.GetComponent<Button>();
+            if (button != null)
+            {
+                buyLandButtons.Add(button);
+            }
+        }
+    }
+
     private GameManager GetGameManager()
     {
         if (gameManagerInstance == null)
@@ -152,4 +220,5 @@ public class ShopUI : MonoBehaviour
 
         return gameManagerInstance;
     }
+
 }

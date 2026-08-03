@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 
 [CreateAssetMenu(fileName = "EnclosureData", menuName = "SkyZoo/Enclosure Data")]
 public class EnclosureData : ScriptableObject
@@ -14,4 +15,6 @@ public class EnclosureData : ScriptableObject
     public GameObject prefab;
     public Vector3    prefabOffset;                         // fine-tune placement (e.g. y=0.5 if pivot is at mesh center)
     public Color      footprintColor = new(0.2f, 0.8f, 0.2f, 0.6f);
+    public Image cardShopImage;                             //should be the same as the regular card art
+    public int shopCost;
 }
