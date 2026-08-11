@@ -14,9 +14,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::EnclosureData
   enclosureName: Salmon Aquarium
   size: {x: 1, y: 2}
-  cells:
-  - {x: 0, y: 0}
-  - {x: 0, y: 1}
+  shapeCells:
+  - {x: 1, y: 0}
+  - {x: 1, y: 1}
+  pivotHalf: {x: 3, y: 2}
+  pivotCell: {x: 0, y: 0}
+  shapeCanvasSize: 3
   baseValue: 6
   animalType: 1
   biomeType: 2
@@ -24,3 +27,5 @@ MonoBehaviour:
   prefab: {fileID: 0}
   prefabOffset: {x: 0, y: 0, z: 0}
   footprintColor: {r: 0.9, g: 0.5, b: 0.4, a: 0.6}
+  cardShopImage: {fileID: 0}
+  shopCost: 0

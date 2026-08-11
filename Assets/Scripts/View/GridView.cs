@@ -3,17 +3,6 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-// Isometric 3D grid view — grid lives in the XZ plane, Y is up.
-// The GridView GameObject's world position is the CENTER of the grid.
-// Hotkeys (bound in InputSystem_Actions → Grid map):
-//   1-9   select hand slot → enters the mode that card's TargetMode requires
-//   P     path placement mode
-//   N     advance day (debug: same as clicking the Advance button)
-//   Esc   cancel / clear mode
-//   LMB   place enclosure / toggle or drag path edges / pick target(s) for a card
-//   RMB   remove enclosure under cursor (refunds partial mana)
-// All grid/hand interaction is gated to Phase.Build — during Phase.Reward
-// (the daily 3-card choice) the board is frozen until ChooseReward is called.
 public class GridView : MonoBehaviour
 {
     public enum Phase { Build, Scoring, Reward }
@@ -24,7 +13,7 @@ public class GridView : MonoBehaviour
     [SerializeField] private float cellSize   = 1f;
 
     [Header("Island")]
-    [SerializeField] private GameObject islandPrefab; // assign a 3D island model; leave null for default plane
+    [SerializeField] private GameObject islandPrefab;
 
     [Header("Input")]
     [SerializeField] private InputActionAsset inputActions;
@@ -45,43 +34,40 @@ public class GridView : MonoBehaviour
     [SerializeField] private float vertexMarkerSize = 0.3f;
 
     [Header("Paths")]
-    [SerializeField] private int maxPaths = 8; // global pool, shared for the whole game — never refills
+    [SerializeField] private int maxPaths = 8;
 
     [Header("Score Wave")]
-    [SerializeField] private float scoreWaveStagger = 0.25f; // seconds between each enclosure's popup, ordered by distance from the start vertex
-    [SerializeField] private float endOfDayPause    = 2f;    // pause after the wave (and week/quota result) before the reward screen appears
+    [SerializeField] private float scoreWaveStagger = 0.25f;
+    [SerializeField] private float endOfDayPause    = 2f;
 
     [Header("Camera")]
     [SerializeField] private float camPitch       = 30f;
     [SerializeField] private float camYaw         = 45f;
-    [SerializeField] private float camZoom        = 1f;   // >1 zooms out, <1 zooms in
+    [SerializeField] private float camZoom        = 1f;
     [SerializeField] private float perspectiveFov = 60f;
 
     [Header("Economy")]
     [SerializeField] private int   startingMana          = 3;
-    [SerializeField] private float enclosureRefundFraction = 0.5f; // partial, not full, refund on deletion
+    [SerializeField] private float enclosureRefundFraction = 0.5f;
 
     [Header("Starting Hand (assign card assets in Inspector)")]
     [SerializeField] private CardData[] startingHand;
 
     [Header("Phase / Week")]
-    [SerializeField] private int   daysPerWeek       = 5; // GDD originally said 7 — using 5 per latest direction
+    [SerializeField] private int   daysPerWeek       = 5;
     [SerializeField] private float startingQuota     = 20f;
-    [SerializeField] private float quotaGrowthPerWeek = 1.25f; // quota scaling is the run's difficulty curve
-    [SerializeField] private CardData[] cardPool;          // possible cards offered by the daily reward draft
+    [SerializeField] private float quotaGrowthPerWeek = 1.25f;
+    [SerializeField] private CardData[] cardPool;
 
-    // ── Y heights for overlay layers ──────────────────────────────────────────
     private const float YGrid    = 0.005f;
     private const float YPath    = 0.015f;
     private const float YPreview = 0.025f;
 
-    // ── Sorting orders ────────────────────────────────────────────────────────
     private const int SortGridLines = -5;
     private const int SortPathEdges =  5;
     private const int SortEdgeHover =  8;
     private const int SortPreview   = 10;
 
-    // ── Input actions ────────────────────────────────────────────────────────
     private InputAction _pointerPositionAction;
     private InputAction _clickAction;
     private InputAction _removeAction;
@@ -90,6 +76,7 @@ public class GridView : MonoBehaviour
     private InputAction _selectSlotAction;
     private InputAction _toggleCamAction;
     private InputAction _advanceDayAction;
+    private InputAction _rotateAction;
 
     private bool _isPathDragging;
     private bool _hasPathDragDirectionLock;
@@ -98,25 +85,23 @@ public class GridView : MonoBehaviour
     private readonly HashSet<Vector2Int> _draggedPathEdgesH = new();
     private readonly HashSet<Vector2Int> _draggedPathEdgesV = new();
 
-    // ── Runtime state ────────────────────────────────────────────────────────
     private GridModel _model;
     private Sprite    _whiteSprite;
 
     private Hand     _hand;
     private ManaPool _mana;
-    private int      _currentDay; // ever-increasing master clock, used for timed-bonus expiry
+    private int      _currentDay;
 
     private Phase _phase = Phase.Build;
-    private int   _day   = 1;      // 1..daysPerWeek, resets each week — for display
+    private int   _day   = 1;
     private int   _week  = 1;
     private float _quota;
     private float _weekScore;
     private List<CardData> _rewardOptions;
 
-    // For UI (e.g. HandHUD, PhaseHUD) to read/react to without polling every frame.
     public event Action OnHandChanged;
     public event Action OnPendingCardChanged;
-    public event Action OnEconomyChanged; // mana / quota / score / day / week changed
+    public event Action OnEconomyChanged;
     public event Action OnPhaseChanged;
 
     public IReadOnlyList<CardInstance> HandCards => _hand.Cards;
@@ -134,29 +119,26 @@ public class GridView : MonoBehaviour
     public int   PathsRemaining => _model.PathsRemaining;
     public int   MaxPaths        => _model.MaxPaths;
 
-    // World-space position of grid corner (0,0) — set in Start from transform.position
     private Vector3 _origin;
 
     private readonly Dictionary<EnclosureInstance, GameObject> _enclosureViews = new();
     private readonly List<GameObject>                          _pathViews       = new();
 
-    private GameObject     _enclosurePreview;
-    private SpriteRenderer _enclosurePreviewSr;
+    private readonly List<SpriteRenderer> _previewQuads = new();
     private GameObject     _edgePreview;
 
     private enum Mode { None, Enclosure, Path, SelectSingleTarget, SelectMoveSource, SelectMoveDestination }
     private Mode          _mode;
     private CardInstance  _pendingCard;
-    private EnclosureData _pendingEnclosureData; // resolved from _pendingCard when TargetMode == PlaceEnclosure
+    private EnclosureData _pendingEnclosureData;
+    private int           _pendingRotation;
     private EnclosureInstance _moveSource;
-
+    private int           _moveRotation;
 
     private readonly Plane _groundPlane = new(Vector3.up, Vector3.zero);
 
     private bool                 _isPerspective;
     private FreeCameraController _freeCam;
-
-    // ── Unity lifecycle ──────────────────────────────────────────────────────
 
     void Awake()
     {
@@ -169,11 +151,8 @@ public class GridView : MonoBehaviour
         _selectSlotAction      = map.FindAction("SelectSlot",      throwIfNotFound: true);
         _toggleCamAction       = map.FindAction("ToggleCamera",    throwIfNotFound: true);
         _advanceDayAction      = map.FindAction("AdvanceDay",      throwIfNotFound: true);
+        _rotateAction          = map.FindAction("Rotate",          throwIfNotFound: true);
 
-        // Built here (not Start) so hand/mana state exists before any other
-        // script's Start() runs — Unity doesn't guarantee Start() ordering
-        // between different components, but Awake() always fully completes
-        // first across every object. HandHUD.Start() reads this immediately.
         _origin = transform.position + new Vector3(
             -gridWidth  * cellSize * 0.5f,
             0f,
@@ -199,6 +178,7 @@ public class GridView : MonoBehaviour
         _selectSlotAction.performed += OnSelectSlot;
         _toggleCamAction.performed  += OnToggleCamera;
         _advanceDayAction.performed += OnAdvanceDay;
+        _rotateAction.performed     += OnRotate;
     }
 
     void OnDisable()
@@ -210,6 +190,7 @@ public class GridView : MonoBehaviour
         _selectSlotAction.performed -= OnSelectSlot;
         _toggleCamAction.performed  -= OnToggleCamera;
         _advanceDayAction.performed -= OnAdvanceDay;
+        _rotateAction.performed     -= OnRotate;
         inputActions.FindActionMap("Grid").Disable();
     }
 
@@ -221,13 +202,9 @@ public class GridView : MonoBehaviour
         BuildGridLines();
         SpawnPathEndpointMarkers();
 
-        (_enclosurePreview, _enclosurePreviewSr) = MakeFlatQuad("Preview_Enclosure", Color.clear,    SortPreview);
-        _enclosurePreview.SetActive(false);
-
         (_edgePreview, _) = MakeFlatQuad("Preview_Edge", edgeHoverColor, SortEdgeHover);
         _edgePreview.SetActive(false);
 
-        // Find or add FreeCameraController on the main camera
         _freeCam = Camera.main.GetComponent<FreeCameraController>();
         if (_freeCam == null) _freeCam = Camera.main.gameObject.AddComponent<FreeCameraController>();
         _freeCam.enabled = false;
@@ -257,8 +234,6 @@ public class GridView : MonoBehaviour
         }
     }
 
-    // ── Input callbacks ──────────────────────────────────────────────────────
-
     private void OnToggleCamera(InputAction.CallbackContext ctx)
     {
         _isPerspective = !_isPerspective;
@@ -286,11 +261,6 @@ public class GridView : MonoBehaviour
         SelectCard(_hand.Cards[num - 1]);
     }
 
-    // Selects a card from the hand as the pending card to play — entering the
-    // mode its TargetMode requires. Selecting the already-pending card again
-    // deselects it. Called by number-key hotkeys and by HandHUD card clicks.
-    // Takes the specific CardInstance (not just its CardData) so duplicate
-    // copies of the same card type in hand are never confused for one another.
     public void SelectCard(CardInstance card)
     {
         if (card == null || _phase != Phase.Build) return;
@@ -301,8 +271,10 @@ public class GridView : MonoBehaviour
             return;
         }
 
-        _pendingCard = card;
-        _moveSource  = null;
+        _pendingCard     = card;
+        _moveSource      = null;
+        _pendingRotation = 0;
+        _moveRotation    = 0;
 
         switch (card.Data.TargetMode)
         {
@@ -326,12 +298,22 @@ public class GridView : MonoBehaviour
         if (_phase != Phase.Build) return;
         _mode = Mode.Path;
         ResetPathDragState();
-        _enclosurePreview.SetActive(false);
+        HideFootprintPreview();
     }
 
     private void OnCancel(InputAction.CallbackContext ctx) => SetMode(Mode.None);
 
-    // Keyboard shortcut for the same thing the Advance button does.
+    private void OnRotate(InputAction.CallbackContext ctx)
+    {
+        if (_phase != Phase.Build) return;
+
+        switch (_mode)
+        {
+            case Mode.Enclosure:             _pendingRotation = (_pendingRotation + 1) % 4; break;
+            case Mode.SelectMoveDestination: _moveRotation    = (_moveRotation    + 1) % 4; break;
+        }
+    }
+
     private void OnAdvanceDay(InputAction.CallbackContext ctx) => AdvanceDayPhase();
 
     private void OnClick(InputAction.CallbackContext ctx)
@@ -357,13 +339,6 @@ public class GridView : MonoBehaviour
         if (TryGetGroundHit(out Vector3 hit)) TryRemoveAt(hit);
     }
 
-    // ── Day / week phase loop ─────────────────────────────────────────────────
-
-    // Ends the build phase for today: scores the grid, advances the day/week
-    // counters (rolling over and scaling the quota at week's end), refills
-    // mana, expires timed bonuses, and rolls the 3-card daily reward.
-    // Scoring plays out as a staggered wave of popups (nearest the start
-    // vertex first) rather than adding instantly — see ScoreDayCoroutine.
     public void AdvanceDayPhase()
     {
         if (_phase != Phase.Build) return;
@@ -374,7 +349,7 @@ public class GridView : MonoBehaviour
             return;
         }
 
-        SetMode(Mode.None); // clear any pending card/targeting before ending the day
+        SetMode(Mode.None);
         _phase = Phase.Scoring;
         OnPhaseChanged?.Invoke();
 
@@ -390,15 +365,15 @@ public class GridView : MonoBehaviour
 
         var ordered = new List<EnclosureInstance>(_model.Enclosures);
         ordered.Sort((a, b) =>
-            Vector3.Distance(EnclosureWorldPosition(a), startWorld)
-                .CompareTo(Vector3.Distance(EnclosureWorldPosition(b), startWorld)));
+            Vector3.Distance(EnclosurePivotWorld(a, 0f), startWorld)
+                .CompareTo(Vector3.Distance(EnclosurePivotWorld(b, 0f), startWorld)));
 
         foreach (var instance in ordered)
         {
             float score = _model.GetEnclosureScore(instance);
             _weekScore += score;
 
-            ScorePopup.Spawn(EnclosureWorldPosition(instance) + Vector3.up, score, transform);
+            ScorePopup.Spawn(EnclosurePivotWorld(instance, 0f) + Vector3.up, score, transform);
             OnEconomyChanged?.Invoke();
 
             if (scoreWaveStagger > 0f) yield return new WaitForSeconds(scoreWaveStagger);
@@ -435,7 +410,6 @@ public class GridView : MonoBehaviour
         OnPhaseChanged?.Invoke();
     }
 
-    // Called by the reward-popup UI when the player picks one of the 3 cards.
     public void ChooseReward(CardData card)
     {
         if (_phase != Phase.Reward || card == null) return;
@@ -462,13 +436,11 @@ public class GridView : MonoBehaviour
         return result;
     }
 
-    // ── Card play logic ──────────────────────────────────────────────────────
-
     private void TryPlaceEnclosure(Vector3 hit)
     {
         if (_pendingCard == null || _pendingEnclosureData == null) return;
-        var cell = WorldToCell(hit);
-        if (!_model.CanPlaceEnclosure(cell, _pendingEnclosureData.size))
+        var cell = WorldToPivot(hit, _pendingEnclosureData, _pendingRotation);
+        if (!_model.CanPlaceEnclosure(_pendingEnclosureData, cell, _pendingRotation))
         {
             Debug.Log($"[SkyZoo] Can't place '{_pendingCard.Data.cardName}' there — space is occupied or out of bounds.");
             return;
@@ -479,9 +451,9 @@ public class GridView : MonoBehaviour
             return;
         }
 
-        var instance = _model.PlaceEnclosure(_pendingEnclosureData, cell, _pendingCard.Data.manaCost);
+        var instance = _model.PlaceEnclosure(_pendingEnclosureData, cell, _pendingRotation, _pendingCard.Data.manaCost);
         SpawnEnclosureView(instance);
-        RebuildPathViews(); // clears the view for any path piece the model just deleted underneath it
+        RebuildPathViews();
         _hand.Remove(_pendingCard);
         LogState($"Played '{_pendingCard.Data.cardName}' → placed enclosure");
         SetMode(Mode.None);
@@ -506,7 +478,7 @@ public class GridView : MonoBehaviour
         else                        target.AddTimedBonus(card.bonusAmount, _currentDay + card.durationDays);
 
         _hand.Remove(_pendingCard);
-        LogState($"Played '{card.cardName}' → +{card.bonusAmount} bonus on enclosure at {target.GridPosition}");
+        LogState($"Played '{card.cardName}' → +{card.bonusAmount} bonus on enclosure at {target.Bounds.min}");
         SetMode(Mode.None);
         OnHandChanged?.Invoke();
         OnEconomyChanged?.Invoke();
@@ -519,25 +491,26 @@ public class GridView : MonoBehaviour
         var target = _model.GetCell(cell.x, cell.y);
         if (target == null) return;
 
-        _moveSource = target;
-        _mode       = Mode.SelectMoveDestination;
+        _moveSource   = target;
+        _moveRotation = target.Rotation;
+        _mode         = Mode.SelectMoveDestination;
     }
 
     private void TryCompleteMove(Vector3 hit)
     {
-        var cell = WorldToCell(hit);
-        if (!InCellBounds(cell)) return;
-        if (cell == _moveSource.GridPosition) return; // no-op move, don't waste mana
-        if (!_model.CanPlaceEnclosureIgnoring(_moveSource, cell, _moveSource.Data.size)) return;
+        var cell = WorldToPivot(hit, _moveSource.Data, _moveRotation);
+
+        if (cell == _moveSource.PivotHalf && _moveRotation == _moveSource.Rotation) return;
+        if (!_model.CanPlaceEnclosureIgnoring(_moveSource, _moveSource.Data, cell, _moveRotation)) return;
         if (!_mana.TrySpend(_pendingCard.Data.manaCost))
         {
             Debug.Log($"[SkyZoo] Not enough mana to play '{_pendingCard.Data.cardName}' (need {_pendingCard.Data.manaCost}, have {_mana.Current}).");
             return;
         }
 
-        _model.MoveEnclosure(_moveSource, cell);
+        _model.MoveEnclosure(_moveSource, cell, _moveRotation);
         RefreshEnclosureView(_moveSource);
-        RebuildPathViews(); // clears the view for any path piece the model just deleted underneath it
+        RebuildPathViews();
 
         _hand.Remove(_pendingCard);
         LogState($"Played '{_pendingCard.Data.cardName}' → moved enclosure");
@@ -608,8 +581,6 @@ public class GridView : MonoBehaviour
         OnEconomyChanged?.Invoke();
     }
 
-    // Prints current mana and hand contents — the only visibility into game
-    // state right now, since there's no HUD yet.
     private void LogState(string action)
     {
         var names = new List<string>(_hand.Cards.Count);
@@ -619,27 +590,21 @@ public class GridView : MonoBehaviour
         Debug.Log($"[SkyZoo] {action} — mana {_mana.Current}/{_mana.Max} | hand: {hand}");
     }
 
-    // ── Hover preview ────────────────────────────────────────────────────────
-
     private void UpdateHoverPreview(Vector3 hit)
     {
         switch (_mode)
         {
             case Mode.Enclosure:
                 _edgePreview.SetActive(false);
-                if (_pendingEnclosureData == null) { _enclosurePreview.SetActive(false); break; }
-                var cell  = WorldToCell(hit);
-                var size  = _pendingEnclosureData.size;
-                bool ok   = _model.CanPlaceEnclosure(cell, size);
-                PlaceFootprint(_enclosurePreview.transform,
-                    CellCenterWorld(cell, size, YPreview),
-                    (size.x * cellSize - 0.08f, size.y * cellSize - 0.08f));
-                _enclosurePreview.SetActive(true);
-                _enclosurePreviewSr.color = ok ? previewValid : previewInvalid;
+                if (_pendingEnclosureData == null) { HideFootprintPreview(); break; }
+                var cell = WorldToPivot(hit, _pendingEnclosureData, _pendingRotation);
+                bool ok  = _model.CanPlaceEnclosure(_pendingEnclosureData, cell, _pendingRotation);
+                ShowFootprintPreview(_pendingEnclosureData, cell, _pendingRotation,
+                                     ok ? previewValid : previewInvalid);
                 break;
 
             case Mode.Path:
-                _enclosurePreview.SetActive(false);
+                HideFootprintPreview();
                 if (TrySnapToEdge(hit, out bool horiz, out int ex, out int ey))
                 {
                     _edgePreview.SetActive(true);
@@ -657,50 +622,66 @@ public class GridView : MonoBehaviour
                 var targetCell = WorldToCell(hit);
                 var occupant   = InCellBounds(targetCell) ? _model.GetCell(targetCell.x, targetCell.y) : null;
                 if (occupant != null)
-                {
-                    PlaceFootprint(_enclosurePreview.transform,
-                        CellCenterWorld(occupant.GridPosition, occupant.Data.size, YPreview),
-                        (occupant.Data.size.x * cellSize - 0.08f, occupant.Data.size.y * cellSize - 0.08f));
-                    _enclosurePreview.SetActive(true);
-                    _enclosurePreviewSr.color = previewValid;
-                }
+                    ShowFootprintPreview(occupant.Data, occupant.PivotHalf, occupant.Rotation, previewValid);
                 else
-                {
-                    _enclosurePreview.SetActive(false);
-                }
+                    HideFootprintPreview();
                 break;
 
             case Mode.SelectMoveDestination:
                 _edgePreview.SetActive(false);
-                var destCell = WorldToCell(hit);
-                var moveSize = _moveSource.Data.size;
-                bool destOk  = _model.CanPlaceEnclosureIgnoring(_moveSource, destCell, moveSize);
-                PlaceFootprint(_enclosurePreview.transform,
-                    CellCenterWorld(destCell, moveSize, YPreview),
-                    (moveSize.x * cellSize - 0.08f, moveSize.y * cellSize - 0.08f));
-                _enclosurePreview.SetActive(true);
-                _enclosurePreviewSr.color = destOk ? previewValid : previewInvalid;
+                var destCell = WorldToPivot(hit, _moveSource.Data, _moveRotation);
+                bool destOk  = _model.CanPlaceEnclosureIgnoring(_moveSource, _moveSource.Data, destCell, _moveRotation);
+                ShowFootprintPreview(_moveSource.Data, destCell, _moveRotation,
+                                     destOk ? previewValid : previewInvalid);
                 break;
 
             default:
-                _enclosurePreview.SetActive(false);
+                HideFootprintPreview();
                 _edgePreview.SetActive(false);
                 break;
         }
     }
 
-    // ── Visuals ──────────────────────────────────────────────────────────────
+    private void ShowFootprintPreview(EnclosureData data, Vector2Int origin, int rotation, Color color)
+    {
+        for (int i = 0; i < data.CellCount; i++)
+        {
+            var sr = GetPreviewQuad(i);
+            PlaceFootprint(sr.transform,
+                CellCenterWorld(data.GetCell(i, origin, rotation), Vector2Int.one, YPreview),
+                (cellSize - 0.08f, cellSize - 0.08f));
+            sr.color = color;
+            sr.gameObject.SetActive(true);
+        }
+
+        for (int i = data.CellCount; i < _previewQuads.Count; i++)
+            _previewQuads[i].gameObject.SetActive(false);
+    }
+
+    private void HideFootprintPreview()
+    {
+        foreach (var sr in _previewQuads) sr.gameObject.SetActive(false);
+    }
+
+    private SpriteRenderer GetPreviewQuad(int index)
+    {
+        while (_previewQuads.Count <= index)
+        {
+            var (go, sr) = MakeFlatQuad($"Preview_Enclosure_{_previewQuads.Count}", Color.clear, SortPreview);
+            go.SetActive(false);
+            _previewQuads.Add(sr);
+        }
+        return _previewQuads[index];
+    }
 
     private void SpawnIsland()
     {
         if (islandPrefab != null)
         {
-            // Island model should be centered at its own pivot — place it at the grid center
             Instantiate(islandPrefab, transform.position, Quaternion.identity, transform);
         }
         else
         {
-            // Placeholder: Unity Plane is 10×10 world units, scale to fit grid
             var plane = GameObject.CreatePrimitive(PrimitiveType.Plane);
             plane.transform.SetParent(transform);
             float w = gridWidth * cellSize, h = gridHeight * cellSize;
@@ -730,8 +711,6 @@ public class GridView : MonoBehaviour
         }
     }
 
-    // Marks the fixed start/end grid-vertices that a path must connect —
-    // purely visual, positions come from the model's auto-picked vertices.
     private void SpawnPathEndpointMarkers()
     {
         SpawnVertexMarker("PathStart", _model.StartVertex, startVertexColor);
@@ -745,52 +724,51 @@ public class GridView : MonoBehaviour
         go.transform.localScale = new Vector3(vertexMarkerSize, vertexMarkerSize, 1f);
     }
 
-    // Height of the placeholder cube used when an enclosure has no prefab.
     private const float PlaceholderCubeHeight = 0.2f;
 
-    // World position an enclosure's view should sit at — prefab pivot vs.
-    // placeholder cube. The cube's pivot is its center, so it's raised by half
-    // its height to rest on the ground.
-    private Vector3 EnclosureWorldPosition(EnclosureInstance instance)
-    {
-        bool hasPrefab = instance.Data.prefab != null;
-        float worldY   = hasPrefab ? 0f : PlaceholderCubeHeight * 0.5f;
-        var   center   = CellCenterWorld(instance.GridPosition, instance.Data.size, worldY);
-        return hasPrefab ? center + instance.Data.prefabOffset : center;
-    }
+    private Vector3 EnclosurePivotWorld(EnclosureInstance instance, float worldY)
+        => HalfPointWorld(instance.PivotHalf, worldY);
 
     private void SpawnEnclosureView(EnclosureInstance instance)
     {
         GameObject go;
+        var rotation = Quaternion.Euler(0f, 90f * instance.Rotation, 0f);
+
         if (instance.Data.prefab != null)
         {
-            go = Instantiate(instance.Data.prefab, EnclosureWorldPosition(instance), Quaternion.identity, transform);
-            go.name = $"Enclosure_{instance.GridPosition.x}_{instance.GridPosition.y}";
+            go = Instantiate(instance.Data.prefab,
+                             EnclosurePivotWorld(instance, 0f) + rotation * instance.Data.prefabOffset,
+                             rotation, transform);
         }
         else
         {
-            // No prefab: a flat cube sized to the footprint (0.2 tall), shrunk to
-            // 0.9 so it sits slightly inside its cells and gaps show between neighbours.
-            go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            go.name = $"Enclosure_{instance.GridPosition.x}_{instance.GridPosition.y}";
+            go = new GameObject("Enclosure");
             go.transform.SetParent(transform);
-            go.transform.position   = EnclosureWorldPosition(instance);
-            go.transform.localScale = new Vector3(
-                instance.Data.size.x * cellSize,
-                PlaceholderCubeHeight,
-                instance.Data.size.y * cellSize) * 0.9f;
+            go.transform.position = EnclosurePivotWorld(instance, 0f);
 
-            var mat = go.GetComponent<Renderer>().material;
-            mat.color = instance.Data.footprintColor;
+            foreach (var c in instance.Cells)
+            {
+                var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                cube.transform.SetParent(go.transform);
+                cube.transform.position   = CellCenterWorld(c, Vector2Int.one, PlaceholderCubeHeight * 0.5f);
+                cube.transform.localScale = new Vector3(cellSize, PlaceholderCubeHeight, cellSize) * 0.9f;
+                cube.GetComponent<Renderer>().material.color = instance.Data.footprintColor;
+            }
         }
 
+        var bounds = instance.Bounds;
+        go.name = $"Enclosure_{bounds.xMin}_{bounds.yMin}";
         _enclosureViews[instance] = go;
     }
 
     private void RefreshEnclosureView(EnclosureInstance instance)
     {
-        if (_enclosureViews.TryGetValue(instance, out var go))
-            go.transform.position = EnclosureWorldPosition(instance);
+        if (_enclosureViews.TryGetValue(instance, out var old))
+        {
+            Destroy(old);
+            _enclosureViews.Remove(instance);
+        }
+        SpawnEnclosureView(instance);
     }
 
     private void RebuildPathViews()
@@ -817,8 +795,6 @@ public class GridView : MonoBehaviour
                 }
     }
 
-    // ── Layout helpers ────────────────────────────────────────────────────────
-
     private void PositionEdgeQuad(Transform t, bool horiz, int x, int y, float worldY)
     {
         float cs = cellSize;
@@ -840,14 +816,11 @@ public class GridView : MonoBehaviour
         t.localScale = new Vector3(size.w, size.d, 1f);
     }
 
-    // ── Edge snapping ─────────────────────────────────────────────────────────
-
     private bool TrySnapToEdge(Vector3 hit, out bool horiz, out int ex, out int ey)
         => TrySnapToEdge(hit, edgeSnapDist, out horiz, out ex, out ey);
 
     private bool TrySnapToEdge(Vector3 hit, float snapDist, out bool horiz, out int ex, out int ey)
     {
-        // Convert world hit to grid-local coords
         float gx = (hit.x - _origin.x) / cellSize;
         float gz = (hit.z - _origin.z) / cellSize;
 
@@ -923,8 +896,6 @@ public class GridView : MonoBehaviour
         }
     }
 
-    // ── Camera ────────────────────────────────────────────────────────────────
-
     private void FitCamera()
     {
         var cam = Camera.main;
@@ -940,15 +911,15 @@ public class GridView : MonoBehaviour
         cam.orthographicSize = (diagHalf + 0.5f) / Mathf.Cos(pitchRad) * camZoom;
     }
 
-    // ── Utilities ─────────────────────────────────────────────────────────────
-
     private void SetMode(Mode m)
     {
         _mode = m;
         _pendingCard          = null;
         _pendingEnclosureData = null;
+        _pendingRotation      = 0;
         _moveSource           = null;
-        _enclosurePreview.SetActive(false);
+        _moveRotation         = 0;
+        HideFootprintPreview();
         _edgePreview.SetActive(false);
         ResetPathDragState();
         OnPendingCardChanged?.Invoke();
@@ -977,11 +948,9 @@ public class GridView : MonoBehaviour
         return false;
     }
 
-    // Grid-local XZ offset → world position (handles the centered origin)
     private Vector3 G2W(float localX, float localZ, float worldY)
         => new(_origin.x + localX, worldY, _origin.z + localZ);
 
-    // World center of a cell range, at a given world Y
     private Vector3 CellCenterWorld(Vector2Int cell, Vector2Int size, float worldY)
         => G2W((cell.x + size.x * 0.5f) * cellSize, (cell.y + size.y * 0.5f) * cellSize, worldY);
 
@@ -989,11 +958,23 @@ public class GridView : MonoBehaviour
         => new(Mathf.FloorToInt((world.x - _origin.x) / cellSize),
                Mathf.FloorToInt((world.z - _origin.z) / cellSize));
 
+    private Vector2Int WorldToPivot(Vector3 world, EnclosureData data, int rotation)
+    {
+        var parity = data.GetOriginParity(rotation);
+        return new Vector2Int(
+            SnapToParity((world.x - _origin.x) / cellSize * 2f, parity.x),
+            SnapToParity((world.z - _origin.z) / cellSize * 2f, parity.y));
+    }
+
+    private static int SnapToParity(float value, int parity)
+        => Mathf.RoundToInt((value - parity) * 0.5f) * 2 + parity;
+
+    private Vector3 HalfPointWorld(Vector2Int half, float worldY)
+        => G2W(half.x * 0.5f * cellSize, half.y * 0.5f * cellSize, worldY);
+
     private bool InCellBounds(Vector2Int cell)
         => cell.x >= 0 && cell.y >= 0 && cell.x < _model.Width && cell.y < _model.Height;
 
-    // Sprites rotated 90° around X lie flat in XZ:
-    //   local X → world X,  local Y → world +Z,  sprite face → world +Y
     private (GameObject go, SpriteRenderer sr) MakeFlatQuad(string objName, Color color, int order)
     {
         var go = new GameObject(objName);

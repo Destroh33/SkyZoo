@@ -13,14 +13,16 @@ MonoBehaviour:
   m_Name: Zebra
   m_EditorClassIdentifier: Assembly-CSharp::EnclosureData
   enclosureName: Zebra Enclosure
-  size: {x: 2, y: 3}
-  cells:
-  - {x: 0, y: 0}
-  - {x: 0, y: 1}
-  - {x: 0, y: 2}
+  size: {x: 3, y: 3}
+  shapeCells:
   - {x: 1, y: 0}
-  - {x: 1, y: 1}
+  - {x: 2, y: 0}
   - {x: 1, y: 2}
+  - {x: 0, y: 2}
+  - {x: 1, y: 1}
+  pivotHalf: {x: 3, y: 3}
+  pivotCell: {x: 1, y: 1}
+  shapeCanvasSize: 3
   baseValue: 15
   animalType: 1
   biomeType: 0
@@ -28,3 +30,5 @@ MonoBehaviour:
   prefab: {fileID: 0}
   prefabOffset: {x: 0, y: 0, z: 0}
   footprintColor: {r: 0.85, g: 0.85, b: 0.85, a: 0.6}
+  cardShopImage: {fileID: 0}
+  shopCost: 0
