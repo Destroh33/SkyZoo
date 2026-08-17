@@ -15,11 +15,11 @@ MonoBehaviour:
   enclosureName: Zebra Enclosure
   size: {x: 3, y: 3}
   shapeCells:
+  - {x: 1, y: 1}
   - {x: 1, y: 0}
   - {x: 2, y: 0}
   - {x: 1, y: 2}
   - {x: 0, y: 2}
-  - {x: 1, y: 1}
   pivotHalf: {x: 3, y: 3}
   pivotCell: {x: 1, y: 1}
   shapeCanvasSize: 3

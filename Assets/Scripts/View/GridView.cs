@@ -5,8 +5,6 @@ using UnityEngine.InputSystem;
 
 public class GridView : MonoBehaviour
 {
-    public enum Phase { Build, Scoring, Reward }
-
     [Header("Grid Settings")]
     [SerializeField] private int   gridWidth  = 10;
     [SerializeField] private int   gridHeight = 10;
@@ -36,28 +34,10 @@ public class GridView : MonoBehaviour
     [Header("Paths")]
     [SerializeField] private int maxPaths = 8;
 
-    [Header("Score Wave")]
-    [SerializeField] private float scoreWaveStagger = 0.25f;
-    [SerializeField] private float endOfDayPause    = 2f;
-
-    [Header("Camera")]
-    [SerializeField] private float camPitch       = 30f;
-    [SerializeField] private float camYaw         = 45f;
-    [SerializeField] private float camZoom        = 1f;
-    [SerializeField] private float perspectiveFov = 60f;
-
-    [Header("Economy")]
-    [SerializeField] private int   startingMana          = 3;
-    [SerializeField] private float enclosureRefundFraction = 0.5f;
-
-    [Header("Starting Hand (assign card assets in Inspector)")]
-    [SerializeField] private CardData[] startingHand;
-
-    [Header("Phase / Week")]
-    [SerializeField] private int   daysPerWeek       = 5;
-    [SerializeField] private float startingQuota     = 20f;
-    [SerializeField] private float quotaGrowthPerWeek = 1.25f;
-    [SerializeField] private CardData[] cardPool;
+    [Header("Camera (locked isometric view)")]
+    [SerializeField] private float camPitch = 30f;
+    [SerializeField] private float camYaw   = 45f;
+    [SerializeField] private float camZoom  = 1f;
 
     private const float YGrid    = 0.005f;
     private const float YPath    = 0.015f;
@@ -74,7 +54,6 @@ public class GridView : MonoBehaviour
     private InputAction _pathModeAction;
     private InputAction _cancelAction;
     private InputAction _selectSlotAction;
-    private InputAction _toggleCamAction;
     private InputAction _advanceDayAction;
     private InputAction _rotateAction;
 
@@ -88,36 +67,13 @@ public class GridView : MonoBehaviour
     private GridModel _model;
     private Sprite    _whiteSprite;
 
-    private Hand     _hand;
-    private ManaPool _mana;
-    private int      _currentDay;
+    public GridModel Model => _model;
 
-    private Phase _phase = Phase.Build;
-    private int   _day   = 1;
-    private int   _week  = 1;
-    private float _quota;
-    private float _weekScore;
-    private List<CardData> _rewardOptions;
-
-    public event Action OnHandChanged;
     public event Action OnPendingCardChanged;
-    public event Action OnEconomyChanged;
-    public event Action OnPhaseChanged;
 
-    public IReadOnlyList<CardInstance> HandCards => _hand.Cards;
     public CardInstance PendingCard => _pendingCard;
-
-    public Phase CurrentPhase => _phase;
-    public int   Day         => _day;
-    public int   DaysPerWeek => daysPerWeek;
-    public int   Week        => _week;
-    public float Quota       => _quota;
-    public float WeekScore   => _weekScore;
-    public int   Mana        => _mana.Current;
-    public int   MaxMana     => _mana.Max;
-    public IReadOnlyList<CardData> RewardOptions => _rewardOptions;
-    public int   PathsRemaining => _model.PathsRemaining;
-    public int   MaxPaths        => _model.MaxPaths;
+    public int PathsRemaining => _model.PathsRemaining;
+    public int MaxPaths       => _model.MaxPaths;
 
     private Vector3 _origin;
 
@@ -137,8 +93,18 @@ public class GridView : MonoBehaviour
 
     private readonly Plane _groundPlane = new(Vector3.up, Vector3.zero);
 
-    private bool                 _isPerspective;
-    private FreeCameraController _freeCam;
+    private GameManager _game;
+
+    private GameManager Game
+    {
+        get
+        {
+            if (_game == null) _game = GameManager.instance != null ? GameManager.instance : FindAnyObjectByType<GameManager>();
+            return _game;
+        }
+    }
+
+    private bool InBuildPhase => Game != null && Game.InBuildPhase;
 
     void Awake()
     {
@@ -149,7 +115,6 @@ public class GridView : MonoBehaviour
         _pathModeAction        = map.FindAction("PathMode",        throwIfNotFound: true);
         _cancelAction          = map.FindAction("Cancel",          throwIfNotFound: true);
         _selectSlotAction      = map.FindAction("SelectSlot",      throwIfNotFound: true);
-        _toggleCamAction       = map.FindAction("ToggleCamera",    throwIfNotFound: true);
         _advanceDayAction      = map.FindAction("AdvanceDay",      throwIfNotFound: true);
         _rotateAction          = map.FindAction("Rotate",          throwIfNotFound: true);
 
@@ -160,12 +125,6 @@ public class GridView : MonoBehaviour
 
         _model       = new GridModel(gridWidth, gridHeight, maxPaths);
         _whiteSprite = MakeWhiteSprite();
-
-        _mana  = new ManaPool(startingMana);
-        _hand  = new Hand();
-        _quota = startingQuota;
-        foreach (var card in startingHand)
-            if (card != null) _hand.Add(card);
     }
 
     void OnEnable()
@@ -176,7 +135,6 @@ public class GridView : MonoBehaviour
         _pathModeAction.performed   += OnPathMode;
         _cancelAction.performed     += OnCancel;
         _selectSlotAction.performed += OnSelectSlot;
-        _toggleCamAction.performed  += OnToggleCamera;
         _advanceDayAction.performed += OnAdvanceDay;
         _rotateAction.performed     += OnRotate;
     }
@@ -188,15 +146,19 @@ public class GridView : MonoBehaviour
         _pathModeAction.performed   -= OnPathMode;
         _cancelAction.performed     -= OnCancel;
         _selectSlotAction.performed -= OnSelectSlot;
-        _toggleCamAction.performed  -= OnToggleCamera;
         _advanceDayAction.performed -= OnAdvanceDay;
         _rotateAction.performed     -= OnRotate;
         inputActions.FindActionMap("Grid").Disable();
     }
 
+    void OnDestroy()
+    {
+        if (_game != null) _game.OnEnclosureScored -= SpawnScorePopup;
+    }
+
     void Start()
     {
-        LogState("Game start");
+        if (Game != null) Game.OnEnclosureScored += SpawnScorePopup;
 
         SpawnIsland();
         BuildGridLines();
@@ -204,10 +166,6 @@ public class GridView : MonoBehaviour
 
         (_edgePreview, _) = MakeFlatQuad("Preview_Edge", edgeHoverColor, SortEdgeHover);
         _edgePreview.SetActive(false);
-
-        _freeCam = Camera.main.GetComponent<FreeCameraController>();
-        if (_freeCam == null) _freeCam = Camera.main.gameObject.AddComponent<FreeCameraController>();
-        _freeCam.enabled = false;
 
         FitCamera();
     }
@@ -218,7 +176,7 @@ public class GridView : MonoBehaviour
         if (hasHit)
             UpdateHoverPreview(hit);
 
-        if (_phase != Phase.Build || _mode != Mode.Path) return;
+        if (!InBuildPhase || _mode != Mode.Path) return;
 
         if (_clickAction.IsPressed())
         {
@@ -234,36 +192,22 @@ public class GridView : MonoBehaviour
         }
     }
 
-    private void OnToggleCamera(InputAction.CallbackContext ctx)
+    private void SpawnScorePopup(EnclosureInstance instance, float score)
     {
-        _isPerspective = !_isPerspective;
-        var cam = Camera.main;
-
-        if (_isPerspective)
-        {
-            cam.orthographic = false;
-            cam.fieldOfView  = perspectiveFov;
-            _freeCam.enabled = true;
-            SetMode(Mode.None);
-        }
-        else
-        {
-            _freeCam.enabled = false;
-            cam.orthographic = true;
-            FitCamera();
-        }
+        ScorePopup.Spawn(EnclosurePivotWorld(instance, 0f) + Vector3.up, score, transform);
     }
 
     private void OnSelectSlot(InputAction.CallbackContext ctx)
     {
-        if (_phase != Phase.Build) return;
-        if (!int.TryParse(ctx.control.name, out int num) || num < 1 || num > _hand.Cards.Count) return;
-        SelectCard(_hand.Cards[num - 1]);
+        if (!InBuildPhase) return;
+        var cards = Game.HandCards;
+        if (!int.TryParse(ctx.control.name, out int num) || num < 1 || num > cards.Count) return;
+        SelectCard(cards[num - 1]);
     }
 
     public void SelectCard(CardInstance card)
     {
-        if (card == null || _phase != Phase.Build) return;
+        if (card == null || !InBuildPhase) return;
 
         if (_pendingCard == card)
         {
@@ -293,9 +237,11 @@ public class GridView : MonoBehaviour
         OnPendingCardChanged?.Invoke();
     }
 
+    public void CancelSelection() => SetMode(Mode.None);
+
     private void OnPathMode(InputAction.CallbackContext ctx)
     {
-        if (_phase != Phase.Build) return;
+        if (!InBuildPhase) return;
         _mode = Mode.Path;
         ResetPathDragState();
         HideFootprintPreview();
@@ -305,7 +251,7 @@ public class GridView : MonoBehaviour
 
     private void OnRotate(InputAction.CallbackContext ctx)
     {
-        if (_phase != Phase.Build) return;
+        if (!InBuildPhase) return;
 
         switch (_mode)
         {
@@ -314,11 +260,14 @@ public class GridView : MonoBehaviour
         }
     }
 
-    private void OnAdvanceDay(InputAction.CallbackContext ctx) => AdvanceDayPhase();
+    private void OnAdvanceDay(InputAction.CallbackContext ctx)
+    {
+        if (Game != null) Game.AdvanceDayPhase();
+    }
 
     private void OnClick(InputAction.CallbackContext ctx)
     {
-        if (_phase != Phase.Build) return;
+        if (!InBuildPhase) return;
         if (!TryGetGroundHit(out Vector3 hit)) return;
         switch (_mode)
         {
@@ -335,105 +284,8 @@ public class GridView : MonoBehaviour
 
     private void OnRemoveEnclosure(InputAction.CallbackContext ctx)
     {
-        if (_phase != Phase.Build) return;
+        if (!InBuildPhase) return;
         if (TryGetGroundHit(out Vector3 hit)) TryRemoveAt(hit);
-    }
-
-    public void AdvanceDayPhase()
-    {
-        if (_phase != Phase.Build) return;
-
-        if (!_model.HasValidPath())
-        {
-            Debug.Log("[SkyZoo] Can't advance — no valid path from start to end.");
-            return;
-        }
-
-        SetMode(Mode.None);
-        _phase = Phase.Scoring;
-        OnPhaseChanged?.Invoke();
-
-        StartCoroutine(ScoreDayCoroutine());
-    }
-
-    private System.Collections.IEnumerator ScoreDayCoroutine()
-    {
-        _currentDay++;
-        _model.CurrentDay = _currentDay;
-
-        Vector3 startWorld = G2W(_model.StartVertex.x * cellSize, _model.StartVertex.y * cellSize, YPath);
-
-        var ordered = new List<EnclosureInstance>(_model.Enclosures);
-        ordered.Sort((a, b) =>
-            Vector3.Distance(EnclosurePivotWorld(a, 0f), startWorld)
-                .CompareTo(Vector3.Distance(EnclosurePivotWorld(b, 0f), startWorld)));
-
-        foreach (var instance in ordered)
-        {
-            float score = _model.GetEnclosureScore(instance);
-            _weekScore += score;
-
-            ScorePopup.Spawn(EnclosurePivotWorld(instance, 0f) + Vector3.up, score, transform);
-            OnEconomyChanged?.Invoke();
-
-            if (scoreWaveStagger > 0f) yield return new WaitForSeconds(scoreWaveStagger);
-        }
-
-        foreach (var e in _model.Enclosures) e.ExpireBonuses(_currentDay);
-        _mana.RefillForNewDay();
-
-        LogState($"Day {_day}/{daysPerWeek} scored → week total {_weekScore:0.#}/{_quota:0.#}");
-
-        if (_day >= daysPerWeek)
-        {
-            bool passed = _weekScore >= _quota;
-            Debug.Log(passed
-                ? $"[SkyZoo] Week {_week} complete — quota met! ({_weekScore:0.#}/{_quota:0.#})"
-                : $"[SkyZoo] Week {_week} FAILED quota. ({_weekScore:0.#}/{_quota:0.#})");
-
-            _week++;
-            _quota    *= quotaGrowthPerWeek;
-            _weekScore = 0f;
-            _day       = 1;
-        }
-        else
-        {
-            _day++;
-        }
-
-        OnEconomyChanged?.Invoke();
-
-        if (endOfDayPause > 0f) yield return new WaitForSeconds(endOfDayPause);
-
-        _rewardOptions = PickRandomCards(3);
-        _phase = Phase.Reward;
-        OnPhaseChanged?.Invoke();
-    }
-
-    public void ChooseReward(CardData card)
-    {
-        if (_phase != Phase.Reward || card == null) return;
-
-        _hand.Add(card);
-        _rewardOptions = null;
-        _phase = Phase.Build;
-
-        LogState($"Added '{card.cardName}' to hand from daily reward");
-        OnHandChanged?.Invoke();
-        OnPhaseChanged?.Invoke();
-    }
-
-    private List<CardData> PickRandomCards(int n)
-    {
-        var pool   = new List<CardData>(cardPool);
-        var result = new List<CardData>();
-        for (int i = 0; i < n && pool.Count > 0; i++)
-        {
-            int idx = UnityEngine.Random.Range(0, pool.Count);
-            result.Add(pool[idx]);
-            pool.RemoveAt(idx);
-        }
-        return result;
     }
 
     private void TryPlaceEnclosure(Vector3 hit)
@@ -445,20 +297,15 @@ public class GridView : MonoBehaviour
             Debug.Log($"[SkyZoo] Can't place '{_pendingCard.Data.cardName}' there — space is occupied or out of bounds.");
             return;
         }
-        if (!_mana.TrySpend(_pendingCard.Data.manaCost))
-        {
-            Debug.Log($"[SkyZoo] Not enough mana to play '{_pendingCard.Data.cardName}' (need {_pendingCard.Data.manaCost}, have {_mana.Current}).");
-            return;
-        }
 
-        var instance = _model.PlaceEnclosure(_pendingEnclosureData, cell, _pendingRotation, _pendingCard.Data.manaCost);
+        var card = _pendingCard;
+        if (!Game.TryPlayCard(card)) return;
+
+        var instance = _model.PlaceEnclosure(_pendingEnclosureData, cell, _pendingRotation, card.Data.manaCost);
         SpawnEnclosureView(instance);
         RebuildPathViews();
-        _hand.Remove(_pendingCard);
-        LogState($"Played '{_pendingCard.Data.cardName}' → placed enclosure");
+        Game.LogState($"Played '{card.Data.cardName}' → placed enclosure");
         SetMode(Mode.None);
-        OnHandChanged?.Invoke();
-        OnEconomyChanged?.Invoke();
     }
 
     private void TryApplyAmplify(Vector3 hit)
@@ -468,20 +315,14 @@ public class GridView : MonoBehaviour
         if (!InCellBounds(cell)) return;
         var target = _model.GetCell(cell.x, cell.y);
         if (target == null) return;
-        if (!_mana.TrySpend(card.manaCost))
-        {
-            Debug.Log($"[SkyZoo] Not enough mana to play '{card.cardName}' (need {card.manaCost}, have {_mana.Current}).");
-            return;
-        }
+
+        if (!Game.TryPlayCard(_pendingCard)) return;
 
         if (card.durationDays <= 0) target.AddPermanentBonus(card.bonusAmount);
-        else                        target.AddTimedBonus(card.bonusAmount, _currentDay + card.durationDays);
+        else                        target.AddTimedBonus(card.bonusAmount, Game.CurrentDay + card.durationDays);
 
-        _hand.Remove(_pendingCard);
-        LogState($"Played '{card.cardName}' → +{card.bonusAmount} bonus on enclosure at {target.Bounds.min}");
+        Game.LogState($"Played '{card.cardName}' → +{card.bonusAmount} bonus on enclosure at {target.Bounds.min}");
         SetMode(Mode.None);
-        OnHandChanged?.Invoke();
-        OnEconomyChanged?.Invoke();
     }
 
     private void TrySelectMoveSource(Vector3 hit)
@@ -502,21 +343,17 @@ public class GridView : MonoBehaviour
 
         if (cell == _moveSource.PivotHalf && _moveRotation == _moveSource.Rotation) return;
         if (!_model.CanPlaceEnclosureIgnoring(_moveSource, _moveSource.Data, cell, _moveRotation)) return;
-        if (!_mana.TrySpend(_pendingCard.Data.manaCost))
-        {
-            Debug.Log($"[SkyZoo] Not enough mana to play '{_pendingCard.Data.cardName}' (need {_pendingCard.Data.manaCost}, have {_mana.Current}).");
-            return;
-        }
 
-        _model.MoveEnclosure(_moveSource, cell, _moveRotation);
-        RefreshEnclosureView(_moveSource);
+        var card   = _pendingCard;
+        var source = _moveSource;
+        if (!Game.TryPlayCard(card)) return;
+
+        _model.MoveEnclosure(source, cell, _moveRotation);
+        RefreshEnclosureView(source);
         RebuildPathViews();
 
-        _hand.Remove(_pendingCard);
-        LogState($"Played '{_pendingCard.Data.cardName}' → moved enclosure");
+        Game.LogState($"Played '{card.Data.cardName}' → moved enclosure");
         SetMode(Mode.None);
-        OnHandChanged?.Invoke();
-        OnEconomyChanged?.Invoke();
     }
 
     private void TryTogglePath(Vector3 hit)
@@ -568,8 +405,7 @@ public class GridView : MonoBehaviour
         if (instance == null) return;
 
         _model.RemoveEnclosure(instance);
-        int refund = Mathf.FloorToInt(instance.ManaCostPaid * enclosureRefundFraction);
-        _mana.Refund(refund);
+        int refund = Game.RefundForEnclosure(instance);
 
         if (_enclosureViews.TryGetValue(instance, out var go))
         {
@@ -577,17 +413,7 @@ public class GridView : MonoBehaviour
             _enclosureViews.Remove(instance);
         }
 
-        LogState($"Removed '{instance.Data.enclosureName}' → refunded {refund} mana");
-        OnEconomyChanged?.Invoke();
-    }
-
-    private void LogState(string action)
-    {
-        var names = new List<string>(_hand.Cards.Count);
-        foreach (var c in _hand.Cards) names.Add($"{c.Data.cardName}({c.Data.manaCost})");
-        string hand = names.Count > 0 ? string.Join(", ", names) : "(empty)";
-
-        Debug.Log($"[SkyZoo] {action} — mana {_mana.Current}/{_mana.Max} | hand: {hand}");
+        Game.LogState($"Removed '{instance.Data.enclosureName}' → refunded {refund} mana");
     }
 
     private void UpdateHoverPreview(Vector3 hit)
@@ -920,7 +746,7 @@ public class GridView : MonoBehaviour
         _moveSource           = null;
         _moveRotation         = 0;
         HideFootprintPreview();
-        _edgePreview.SetActive(false);
+        if (_edgePreview != null) _edgePreview.SetActive(false);
         ResetPathDragState();
         OnPendingCardChanged?.Invoke();
     }

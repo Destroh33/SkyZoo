@@ -6,14 +6,15 @@ using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
 // Balatro-style hand row along the bottom of the screen — one button per
-// card in GridView's hand, fanned out and overlapping when there are many.
+// card in GameManager's hand, fanned out and overlapping when there are many.
 // Click a card to select it as the pending card (GridView.SelectCard); click
 // the selected card again to deselect. The selected card pops upward and is
 // tinted so it's obvious which one is "in hand, about to be played."
 // Built entirely at runtime — no scene/prefab dependencies required.
 public class HandHUD : MonoBehaviour
 {
-    [SerializeField] private GridView gridView;
+    [SerializeField] private GridView    gridView;
+    [SerializeField] private GameManager gameManager;
 
     [Header("Layout")]
     [SerializeField] private float cardWidth      = 110f;
@@ -33,21 +34,22 @@ public class HandHUD : MonoBehaviour
     void Start()
     {
         if (gridView == null) gridView = FindAnyObjectByType<GridView>();
+        if (gameManager == null)
+            gameManager = GameManager.instance != null ? GameManager.instance : FindAnyObjectByType<GameManager>();
 
         EnsureEventSystem();
         BuildCanvas();
 
-        gridView.OnHandChanged        += Rebuild;
-        gridView.OnPendingCardChanged += RefreshHighlight;
+        if (gameManager != null) gameManager.OnHandChanged += Rebuild;
+        if (gridView    != null) gridView.OnPendingCardChanged += RefreshHighlight;
 
         Rebuild();
     }
 
     void OnDestroy()
     {
-        if (gridView == null) return;
-        gridView.OnHandChanged        -= Rebuild;
-        gridView.OnPendingCardChanged -= RefreshHighlight;
+        if (gameManager != null) gameManager.OnHandChanged -= Rebuild;
+        if (gridView    != null) gridView.OnPendingCardChanged -= RefreshHighlight;
     }
 
     private static void EnsureEventSystem()
@@ -85,8 +87,8 @@ public class HandHUD : MonoBehaviour
         foreach (var go in _cardViews) Destroy(go);
         _cardViews.Clear();
 
-        if(gridView == null) return;
-        var cards = gridView.HandCards;
+        if (gameManager == null) return;
+        var cards = gameManager.HandCards;
         int count = cards.Count;
         if (count == 0) return;
 
@@ -138,7 +140,8 @@ public class HandHUD : MonoBehaviour
 
     private void RefreshHighlight()
     {
-        var cards = gridView.HandCards;
+        if (gameManager == null || gridView == null) return;
+        var cards = gameManager.HandCards;
         for (int i = 0; i < _cardViews.Count && i < cards.Count; i++)
         {
             var view     = _cardViews[i];

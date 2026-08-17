@@ -131,6 +131,7 @@ GameObject:
   - component: {fileID: 330585545}
   - component: {fileID: 330585544}
   - component: {fileID: 330585547}
+  - component: {fileID: 330585548}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -256,6 +257,24 @@ MonoBehaviour:
     m_VarianceClampScale: 0.9
     m_ContrastAdaptiveSharpening: 0
   m_Version: 2
+--- !u!114 &330585548
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 330585543}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3eb031d756021bb4cb4d48b273eda5f1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CameraPanZoom
+  zoomStep: 0.85
+  minOrthoSize: 2
+  maxOrthoSize: 20
+  zoomToCursor: 1
+  invertPan: 0
+  maxPanDistance: 15
 --- !u!1 &410087039
 GameObject:
   m_ObjectHideFlags: 0
@@ -428,6 +447,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HandHUD
   gridView: {fileID: 999632217}
+  gameManager: {fileID: 800000003}
   cardWidth: 110
   cardHeight: 150
   idealSpacing: 90
@@ -540,6 +560,85 @@ RectTransform:
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0, y: 0}
+--- !u!1 &800000001
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 800000002}
+  - component: {fileID: 800000003}
+  m_Layer: 0
+  m_Name: GameManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &800000002
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 800000001}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &800000003
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 800000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 453a77b4fbd76c54ca44e8a559686e71, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GameManager
+  gridView: {fileID: 999632217}
+  money: 0
+  goodReviewCount: 0
+  buyCardCost: 1
+  buyLandCost: 1
+  purchasedLand: []
+  deck: {fileID: 0}
+  startingMana: 3
+  enclosureRefundFraction: 0.5
+  startingHand:
+  - {fileID: 11400000, guid: 889900aa11bb22cc33dd44ee55ff6677, type: 2}
+  - {fileID: 11400000, guid: 9900aa11bb22cc33dd44ee55ff667788, type: 2}
+  - {fileID: 11400000, guid: 00aa11bb22cc33dd44ee55ff66778899, type: 2}
+  - {fileID: 11400000, guid: aa11bb22cc33dd44ee55ff6677889900, type: 2}
+  - {fileID: 11400000, guid: 11bb22cc33dd44ee55ff66778899aa00, type: 2}
+  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a2, type: 2}
+  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a5, type: 2}
+  daysPerWeek: 5
+  startingQuota: 50
+  quotaGrowthPerWeek: 1.25
+  cardPool:
+  - {fileID: 11400000, guid: 889900aa11bb22cc33dd44ee55ff6677, type: 2}
+  - {fileID: 11400000, guid: 9900aa11bb22cc33dd44ee55ff667788, type: 2}
+  - {fileID: 11400000, guid: 00aa11bb22cc33dd44ee55ff66778899, type: 2}
+  - {fileID: 11400000, guid: aa11bb22cc33dd44ee55ff6677889900, type: 2}
+  - {fileID: 11400000, guid: 11bb22cc33dd44ee55ff66778899aa00, type: 2}
+  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a1, type: 2}
+  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a2, type: 2}
+  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a3, type: 2}
+  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a4, type: 2}
+  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a5, type: 2}
+  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a6, type: 2}
+  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a7, type: 2}
+  scoreWaveStagger: 0.25
+  endOfDayPause: 2
 --- !u!1 &832575517
 GameObject:
   m_ObjectHideFlags: 0
@@ -638,38 +737,9 @@ MonoBehaviour:
   dragDirectionLockDist: 0.2
   vertexMarkerSize: 0.3
   maxPaths: 15
-  scoreWaveStagger: 0.25
-  endOfDayPause: 2
   camPitch: 30
   camYaw: 45
   camZoom: 0.55
-  perspectiveFov: 60
-  startingMana: 3
-  enclosureRefundFraction: 0.5
-  startingHand:
-  - {fileID: 11400000, guid: 889900aa11bb22cc33dd44ee55ff6677, type: 2}
-  - {fileID: 11400000, guid: 9900aa11bb22cc33dd44ee55ff667788, type: 2}
-  - {fileID: 11400000, guid: 00aa11bb22cc33dd44ee55ff66778899, type: 2}
-  - {fileID: 11400000, guid: aa11bb22cc33dd44ee55ff6677889900, type: 2}
-  - {fileID: 11400000, guid: 11bb22cc33dd44ee55ff66778899aa00, type: 2}
-  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a2, type: 2}
-  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a5, type: 2}
-  daysPerWeek: 5
-  startingQuota: 50
-  quotaGrowthPerWeek: 1.25
-  cardPool:
-  - {fileID: 11400000, guid: 889900aa11bb22cc33dd44ee55ff6677, type: 2}
-  - {fileID: 11400000, guid: 9900aa11bb22cc33dd44ee55ff667788, type: 2}
-  - {fileID: 11400000, guid: 00aa11bb22cc33dd44ee55ff66778899, type: 2}
-  - {fileID: 11400000, guid: aa11bb22cc33dd44ee55ff6677889900, type: 2}
-  - {fileID: 11400000, guid: 11bb22cc33dd44ee55ff66778899aa00, type: 2}
-  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a1, type: 2}
-  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a2, type: 2}
-  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a3, type: 2}
-  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a4, type: 2}
-  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a5, type: 2}
-  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a6, type: 2}
-  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a7, type: 2}
 --- !u!4 &999632218
 Transform:
   m_ObjectHideFlags: 0
@@ -697,7 +767,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 44ee55ff66778899aa00bb1122334455, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PhaseHUD
-  gridView: {fileID: 999632217}
+  gameManager: {fileID: 800000003}
   advanceButton: {fileID: 1210687740}
   manaText: {fileID: 1165998746}
   quotaText: {fileID: 1777228511}
@@ -1702,6 +1772,7 @@ CanvasRenderer:
 SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
+  - {fileID: 800000002}
   - {fileID: 330585546}
   - {fileID: 410087041}
   - {fileID: 832575519}

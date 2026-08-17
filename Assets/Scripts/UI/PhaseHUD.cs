@@ -4,23 +4,23 @@ using UnityEngine;
 using UnityEngine.UI;
 
 // Wires a manually-built Canvas (one Button + four TMP text objects) to
-// GridView's day/week/phase loop:
+// GameManager's day/week/phase loop:
 //   - manaText / quotaText / scoreText / dayText refresh whenever the
 //     economy changes.
-//   - advanceButton calls GridView.AdvanceDayPhase() — only visible/usable
+//   - advanceButton calls GameManager.AdvanceDayPhase() — only visible/usable
 //     during Phase.Build. Wiring is done in code (Start()); do not also add
 //     an OnClick() entry for it in the Inspector.
-//   - when GridView enters Phase.Reward, this spawns its own runtime popup
-//     canvas showing 3 big reward cards (from GridView.RewardOptions);
-//     clicking one calls GridView.ChooseReward and returns to Phase.Build.
+//   - when GameManager enters Phase.Reward, this spawns its own runtime popup
+//     canvas showing 3 big reward cards (from GameManager.RewardOptions);
+//     clicking one calls GameManager.ChooseReward and returns to Phase.Build.
 //
-// Assign gridView/advanceButton/manaText/quotaText/scoreText/dayText in the
-// Inspector after building the Canvas. Use TextMeshProUGUI for the text
-// fields (TMP_Text is the base class both TextMeshProUGUI and 3D TMP use).
+// Assign advanceButton/manaText/quotaText/scoreText/dayText in the Inspector
+// after building the Canvas. Use TextMeshProUGUI for the text fields (TMP_Text
+// is the base class both TextMeshProUGUI and 3D TMP use).
 public class PhaseHUD : MonoBehaviour
 {
     [Header("Wire these to your Canvas objects")]
-    [SerializeField] private GridView gridView;
+    [SerializeField] private GameManager gameManager;
     [SerializeField] private Button   advanceButton;
     [SerializeField] private TMP_Text manaText;
     [SerializeField] private TMP_Text quotaText;
@@ -37,12 +37,13 @@ public class PhaseHUD : MonoBehaviour
 
     void Start()
     {
-        if (gridView == null) gridView = FindAnyObjectByType<GridView>();
+        if (gameManager == null)
+            gameManager = GameManager.instance != null ? GameManager.instance : FindAnyObjectByType<GameManager>();
 
-        advanceButton.onClick.AddListener(gridView.AdvanceDayPhase);
+        advanceButton.onClick.AddListener(gameManager.AdvanceDayPhase);
 
-        gridView.OnEconomyChanged += RefreshTexts;
-        gridView.OnPhaseChanged   += HandlePhaseChanged;
+        gameManager.OnEconomyChanged += RefreshTexts;
+        gameManager.OnPhaseChanged   += HandlePhaseChanged;
 
         RefreshTexts();
         HandlePhaseChanged();
@@ -50,28 +51,28 @@ public class PhaseHUD : MonoBehaviour
 
     void OnDestroy()
     {
-        if (gridView == null) return;
-        gridView.OnEconomyChanged -= RefreshTexts;
-        gridView.OnPhaseChanged   -= HandlePhaseChanged;
+        if (gameManager == null) return;
+        gameManager.OnEconomyChanged -= RefreshTexts;
+        gameManager.OnPhaseChanged   -= HandlePhaseChanged;
     }
 
     private void RefreshTexts()
     {
-        manaText.text  = $"Mana: {gridView.Mana}/{gridView.MaxMana}";
-        quotaText.text = $"Quota: {gridView.Quota:0}";
-        scoreText.text = $"Score: {gridView.WeekScore:0}";
-        dayText.text   = $"Day {gridView.Day} / {gridView.DaysPerWeek}";
-        if (pathsText != null) pathsText.text = $"Paths: {gridView.PathsRemaining}/{gridView.MaxPaths}";
+        manaText.text  = $"Mana: {gameManager.Mana}/{gameManager.MaxMana}";
+        quotaText.text = $"Quota: {gameManager.Quota:0}";
+        scoreText.text = $"Score: {gameManager.WeekScore:0}";
+        dayText.text   = $"Day {gameManager.Day} / {gameManager.DaysPerWeek}";
+        if (pathsText != null) pathsText.text = $"Paths: {gameManager.PathsRemaining}/{gameManager.MaxPaths}";
     }
 
     private void HandlePhaseChanged()
     {
         RefreshTexts();
-        bool inBuild = gridView.CurrentPhase == GridView.Phase.Build;
+        bool inBuild = gameManager.CurrentPhase == GameManager.Phase.Build;
         advanceButton.gameObject.SetActive(inBuild);
 
-        if (gridView.CurrentPhase == GridView.Phase.Reward) ShowRewardPopup();
-        else                                                HideRewardPopup();
+        if (gameManager.CurrentPhase == GameManager.Phase.Reward) ShowRewardPopup();
+        else                                                      HideRewardPopup();
     }
 
     private void ShowRewardPopup()
@@ -97,7 +98,7 @@ public class PhaseHUD : MonoBehaviour
         blockerRt.offsetMax = Vector2.zero;
         blockerGO.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.6f);
 
-        var options = gridView.RewardOptions;
+        var options = gameManager.RewardOptions;
         int count = options.Count;
         float totalWidth = count * rewardCardWidth + Mathf.Max(0, count - 1) * rewardCardGap;
         float startX     = -totalWidth * 0.5f + rewardCardWidth * 0.5f;
@@ -130,7 +131,7 @@ public class PhaseHUD : MonoBehaviour
             text.text      = $"{card.cardName}\n\n{card.description}\n\n{card.manaCost} mana";
 
             var chosen = card; // capture for the closure
-            cardGO.GetComponent<Button>().onClick.AddListener(() => gridView.ChooseReward(chosen));
+            cardGO.GetComponent<Button>().onClick.AddListener(() => gameManager.ChooseReward(chosen));
         }
 
         _rewardCanvas = canvasGO;
