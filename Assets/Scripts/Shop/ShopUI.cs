@@ -126,11 +126,7 @@ public class ShopUI : MonoBehaviour
         var image = button.GetComponent<Image>();
         if (image == null) return;
 
-        Sprite sprite = null;
-        if (card is EnclosureCardData enclosureCard && enclosureCard.enclosure != null && enclosureCard.enclosure.cardShopImage != null)
-        {
-            sprite = enclosureCard.enclosure.cardShopImage.sprite;
-        }
+        Sprite sprite = card != null ? card.Art : null;
 
         image.sprite = sprite;
         image.enabled = sprite != null;

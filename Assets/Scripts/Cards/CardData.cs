@@ -13,5 +13,11 @@ public abstract class CardData : ScriptableObject
     [TextArea] public string description;
     public int    manaCost = 1;
 
+    [Header("Appearance")]
+    public Sprite art;
+    public Color  accentColor = new(0.35f, 0.45f, 0.6f, 1f);
+
+    public virtual Sprite Art => art;
+
     public abstract CardTargetMode TargetMode { get; }
 }

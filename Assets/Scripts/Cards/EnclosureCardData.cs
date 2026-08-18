@@ -8,5 +8,7 @@ public class EnclosureCardData : CardData
 {
     public EnclosureData enclosure;
 
+    public override Sprite Art => art != null ? art : (enclosure != null ? enclosure.cardShopImage : null);
+
     public override CardTargetMode TargetMode => CardTargetMode.PlaceEnclosure;
 }

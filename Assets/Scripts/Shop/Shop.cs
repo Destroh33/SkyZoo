@@ -40,7 +40,13 @@ public class Shop
     }
     
 
-    private void PopulateShopCardlist(List<CardData> shopList) 
+    public void Reroll()
+    {
+        PopulateShopCardlist(buyCardsArea);
+        PopulateShopLandList(buyLandArea);
+    }
+
+    private void PopulateShopCardlist(List<CardData> shopList)
     {
         if (items == null) return;
 

@@ -1,35 +1,38 @@
 using System.Collections.Generic;
-using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
-// Balatro-style hand row along the bottom of the screen — one button per
-// card in GameManager's hand, fanned out and overlapping when there are many.
-// Click a card to select it as the pending card (GridView.SelectCard); click
-// the selected card again to deselect. The selected card pops upward and is
-// tinted so it's obvious which one is "in hand, about to be played."
-// Built entirely at runtime — no scene/prefab dependencies required.
 public class HandHUD : MonoBehaviour
 {
     [SerializeField] private GridView    gridView;
     [SerializeField] private GameManager gameManager;
 
-    [Header("Layout")]
-    [SerializeField] private float cardWidth      = 110f;
-    [SerializeField] private float cardHeight     = 150f;
-    [SerializeField] private float idealSpacing   = 90f;  // gap between card centers when hand is small
-    [SerializeField] private float maxRowWidth    = 900f; // spacing shrinks (cards overlap) past this width
-    [SerializeField] private float selectedYOffset = 36f;
-    [SerializeField] private float bottomMargin    = 40f;
+    [Header("Prefabs (leave empty to generate at runtime)")]
+    [SerializeField] private GameObject handCanvasPrefab;
+    [SerializeField] private GameObject cardPrefab;
 
-    [Header("Colors")]
-    [SerializeField] private Color cardColor     = new(0.15f, 0.15f, 0.2f, 0.95f);
-    [SerializeField] private Color selectedColor = new(0.25f, 0.55f, 0.35f, 1f);
+    [Header("Layout")]
+    [SerializeField] private float cardWidth    = 128f;
+    [SerializeField] private float cardHeight   = 180f;
+    [SerializeField] private float idealSpacing = 110f;
+    [SerializeField] private float maxRowWidth  = 900f;
+    [SerializeField] private float bottomMargin = 26f;
+
+    [Header("Fan")]
+    [SerializeField] private float anglePerCard = 5.5f;
+    [SerializeField] private float maxFanAngle  = 22f;
+    [SerializeField] private float arcHeight    = 30f;
+
+    [Header("Pop")]
+    [SerializeField] private float hoverLift   = 40f;
+    [SerializeField] private float selectLift  = 68f;
+    [SerializeField] private float hoverScale  = 1.14f;
+    [SerializeField] private float selectScale = 1.28f;
 
     private RectTransform _row;
-    private readonly List<GameObject> _cardViews = new();
+    private readonly List<CardView> _cardViews = new();
 
     void Start()
     {
@@ -38,7 +41,7 @@ public class HandHUD : MonoBehaviour
             gameManager = GameManager.instance != null ? GameManager.instance : FindAnyObjectByType<GameManager>();
 
         EnsureEventSystem();
-        BuildCanvas();
+        SetUpCanvas();
 
         if (gameManager != null) gameManager.OnHandChanged += Rebuild;
         if (gridView    != null) gridView.OnPendingCardChanged += RefreshHighlight;
@@ -60,10 +63,36 @@ public class HandHUD : MonoBehaviour
         go.GetComponent<InputSystemUIInputModule>().AssignDefaultActions();
     }
 
-    private void BuildCanvas()
+    private void SetUpCanvas()
+    {
+        GameObject canvasGO;
+
+        if (handCanvasPrefab != null)
+        {
+            canvasGO = Instantiate(handCanvasPrefab, transform);
+            canvasGO.name = "HandCanvas";
+            var found = canvasGO.transform.Find("HandRow");
+            if (found == null)
+            {
+                Debug.LogError("[SkyZoo] Hand canvas prefab has no child named 'HandRow'.");
+                return;
+            }
+            _row = (RectTransform)found;
+        }
+        else
+        {
+            canvasGO = BuildCanvas(transform);
+            _row     = (RectTransform)canvasGO.transform.Find("HandRow");
+        }
+
+        _row.anchoredPosition = new Vector2(0f, bottomMargin + cardHeight * 0.5f);
+        _row.sizeDelta        = new Vector2(maxRowWidth, cardHeight);
+    }
+
+    public static GameObject BuildCanvas(Transform parent)
     {
         var canvasGO = new GameObject("HandCanvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
-        canvasGO.transform.SetParent(transform, false);
+        if (parent != null) canvasGO.transform.SetParent(parent, false);
 
         var canvas = canvasGO.GetComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
@@ -74,89 +103,77 @@ public class HandHUD : MonoBehaviour
 
         var rowGO = new GameObject("HandRow", typeof(RectTransform));
         rowGO.transform.SetParent(canvasGO.transform, false);
-        _row = rowGO.GetComponent<RectTransform>();
-        _row.anchorMin        = new Vector2(0.5f, 0f);
-        _row.anchorMax        = new Vector2(0.5f, 0f);
-        _row.pivot            = new Vector2(0.5f, 0f);
-        _row.anchoredPosition = new Vector2(0f, bottomMargin);
-        _row.sizeDelta        = new Vector2(maxRowWidth, cardHeight + selectedYOffset + 20f);
+
+        var row = rowGO.GetComponent<RectTransform>();
+        row.anchorMin = new Vector2(0.5f, 0f);
+        row.anchorMax = new Vector2(0.5f, 0f);
+        row.pivot     = new Vector2(0.5f, 0f);
+
+        return canvasGO;
     }
 
     private void Rebuild()
     {
-        foreach (var go in _cardViews) Destroy(go);
-        _cardViews.Clear();
+        if (gameManager == null || _row == null) return;
 
-        if (gameManager == null) return;
         var cards = gameManager.HandCards;
         int count = cards.Count;
-        if (count == 0) return;
 
-        float spacing    = count <= 1 ? 0f : Mathf.Min(idealSpacing, maxRowWidth / count);
-        float totalWidth = spacing * (count - 1) + cardWidth;
-        float startX     = -totalWidth * 0.5f + cardWidth * 0.5f;
+        var stale = new List<CardView>(_cardViews);
+        _cardViews.Clear();
 
+        float spacing = count <= 1 ? 0f : Mathf.Min(idealSpacing, (maxRowWidth - cardWidth) / (count - 1));
+        float fan     = Mathf.Min(anglePerCard * (count - 1), maxFanAngle * 2f) * 0.5f;
+
+        int dealIndex = 0;
         for (int i = 0; i < count; i++)
         {
-            var view = CreateCardButton(cards[i]);
-            var rt   = view.GetComponent<RectTransform>();
-            rt.anchoredPosition = new Vector2(startX + i * spacing, 0f);
+            float t = count <= 1 ? 0f : i / (float)(count - 1) * 2f - 1f;
+
+            var view = stale.Find(v => v != null && v.Instance == cards[i]);
+            int deal = 0;
+            if (view != null) stale.Remove(view);
+            else            { view = CreateCard(cards[i]); deal = dealIndex++; }
+
+            view.transform.SetSiblingIndex(i);
+            view.SlotIndex = i;
+            view.SetSlot(new Vector2(t * spacing * (count - 1) * 0.5f, -arcHeight * t * t), -t * fan, deal);
             _cardViews.Add(view);
         }
+
+        foreach (var view in stale) if (view != null) Destroy(view.gameObject);
 
         RefreshHighlight();
     }
 
-    private GameObject CreateCardButton(CardInstance card)
+    private CardView CreateCard(CardInstance card)
     {
-        var go = new GameObject($"Card_{card.Data.cardName}", typeof(RectTransform), typeof(Image), typeof(Button));
-        go.transform.SetParent(_row, false);
+        var binder = CardFactory.Create(cardPrefab, _row, card.Data,
+                                        new Vector2(cardWidth, cardHeight), false);
 
-        var rt = go.GetComponent<RectTransform>();
-        rt.sizeDelta = new Vector2(cardWidth, cardHeight);
-        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0f);
-        rt.pivot     = new Vector2(0.5f, 0f);
+        var view = binder.gameObject.AddComponent<CardView>();
+        view.Init(binder, card.Data, card, hoverLift, selectLift, hoverScale, selectScale, OnCardClicked);
+        return view;
+    }
 
-        go.GetComponent<Image>().color = cardColor;
-
-        var textGO = new GameObject("Label", typeof(RectTransform));
-        textGO.transform.SetParent(go.transform, false);
-        var textRt = textGO.GetComponent<RectTransform>();
-        textRt.anchorMin = Vector2.zero;
-        textRt.anchorMax = Vector2.one;
-        textRt.offsetMin = new Vector2(4f, 4f);
-        textRt.offsetMax = new Vector2(-4f, -4f);
-
-        var text = textGO.AddComponent<TextMeshProUGUI>();
-        text.fontSize  = 16;
-        text.alignment = TextAlignmentOptions.Center;
-        text.color     = Color.white;
-        text.text      = $"{card.Data.cardName}\n{card.Data.manaCost} mana";
-
-        go.GetComponent<Button>().onClick.AddListener(() => gridView.SelectCard(card));
-
-        return go;
+    private void OnCardClicked(CardView view)
+    {
+        Sfx.CardSelect();
+        gridView.SelectCard(view.Instance);
     }
 
     private void RefreshHighlight()
     {
-        if (gameManager == null || gridView == null) return;
-        var cards = gameManager.HandCards;
-        for (int i = 0; i < _cardViews.Count && i < cards.Count; i++)
+        if (gridView == null) return;
+
+        foreach (var view in _cardViews)
         {
-            var view     = _cardViews[i];
-            var rt       = view.GetComponent<RectTransform>();
-            var img      = view.GetComponent<Image>();
-            bool selected = cards[i] == gridView.PendingCard;
-
-            var pos = rt.anchoredPosition;
-            pos.y   = selected ? selectedYOffset : 0f;
-            rt.anchoredPosition = pos;
-            rt.localScale       = selected ? Vector3.one * 1.08f : Vector3.one;
-
-            img.color = selected ? selectedColor : cardColor;
+            if (view == null) continue;
+            bool selected = view.Instance == gridView.PendingCard;
+            view.SetSelected(selected);
 
             if (selected) view.transform.SetAsLastSibling();
+            else          view.RestoreSiblingOrder();
         }
     }
 }

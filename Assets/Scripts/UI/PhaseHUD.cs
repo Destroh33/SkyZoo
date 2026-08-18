@@ -28,12 +28,18 @@ public class PhaseHUD : MonoBehaviour
     [SerializeField] private TMP_Text dayText;
     [SerializeField] private TMP_Text pathsText; // optional — leave unassigned if not built yet
 
-    [Header("Reward Popup (built at runtime)")]
-    [SerializeField] private float rewardCardWidth  = 220f;
-    [SerializeField] private float rewardCardHeight = 320f;
-    [SerializeField] private float rewardCardGap    = 40f;
+    [Header("Prefabs (leave empty to generate at runtime)")]
+    [SerializeField] private GameObject rewardPopupPrefab;
+    [SerializeField] private GameObject rewardCardPrefab;
+    [SerializeField] private GameObject shopOverlayPrefab;
 
-    private GameObject _rewardCanvas;
+    [Header("Reward Popup")]
+    [SerializeField] private float rewardCardWidth  = 210f;
+    [SerializeField] private float rewardCardHeight = 294f;
+    [SerializeField] private float rewardCardGap    = 46f;
+
+    private GameObject  _rewardCanvas;
+    private ShopOverlay _shopOverlay;
 
     void Start()
     {
@@ -73,68 +79,113 @@ public class PhaseHUD : MonoBehaviour
 
         if (gameManager.CurrentPhase == GameManager.Phase.Reward) ShowRewardPopup();
         else                                                      HideRewardPopup();
+
+        if (gameManager.CurrentPhase == GameManager.Phase.Shop) ShowShop();
+        else                                                    HideShop();
+    }
+
+    private void ShowShop()
+    {
+        if (_shopOverlay != null) return;
+        _shopOverlay = ShopOverlay.Create(gameManager, shopOverlayPrefab);
+    }
+
+    private void HideShop()
+    {
+        if (_shopOverlay != null) Destroy(_shopOverlay.gameObject);
+        _shopOverlay = null;
     }
 
     private void ShowRewardPopup()
     {
         HideRewardPopup();
 
+        var canvasGO = rewardPopupPrefab != null
+            ? Instantiate(rewardPopupPrefab)
+            : BuildRewardPopup(rewardCardHeight);
+        canvasGO.name = "RewardCanvas";
+
+        var row = canvasGO.transform.Find("CardRow") as RectTransform;
+        if (row == null)
+        {
+            Debug.LogError("[SkyZoo] Reward popup is missing a child named 'CardRow'.");
+            Destroy(canvasGO);
+            return;
+        }
+
+        var layout = row.GetComponent<HorizontalLayoutGroup>();
+        if (layout != null) layout.spacing = rewardCardGap;
+
+        var options = gameManager.RewardOptions;
+        for (int i = 0; i < options.Count; i++)
+        {
+            var card = options[i];
+            var slot = new GameObject($"RewardSlot{i}", typeof(RectTransform), typeof(LayoutElement));
+            slot.transform.SetParent(row, false);
+
+            var element = slot.GetComponent<LayoutElement>();
+            element.preferredWidth  = rewardCardWidth;
+            element.preferredHeight = rewardCardHeight;
+
+            var binder = CardFactory.Create(rewardCardPrefab, slot.transform, card,
+                                            new Vector2(rewardCardWidth, rewardCardHeight), true);
+
+            var chosen = card;
+            var view   = binder.gameObject.AddComponent<CardView>();
+            view.Init(binder, card, null, 26f, 26f, 1.09f, 1.09f,
+                      _ => { Sfx.RewardPick(); gameManager.ChooseReward(chosen); });
+            view.SetSlot(Vector2.zero, 0f, i);
+        }
+
+        Sfx.RewardAppear();
+        _rewardCanvas = canvasGO;
+    }
+
+    public static GameObject BuildRewardPopup(float cardHeight)
+    {
         var canvasGO = new GameObject("RewardCanvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+
         var canvas = canvasGO.GetComponent<Canvas>();
         canvas.renderMode   = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 10; // draw above the hand row
+        canvas.sortingOrder = 10;
 
         var scaler = canvasGO.GetComponent<CanvasScaler>();
         scaler.uiScaleMode         = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920, 1080);
 
-        // Full-screen dim blocker — also stops clicks reaching the hand row underneath.
-        var blockerGO = new GameObject("Blocker", typeof(RectTransform), typeof(Image));
-        blockerGO.transform.SetParent(canvasGO.transform, false);
-        var blockerRt = blockerGO.GetComponent<RectTransform>();
-        blockerRt.anchorMin = Vector2.zero;
-        blockerRt.anchorMax = Vector2.one;
-        blockerRt.offsetMin = Vector2.zero;
-        blockerRt.offsetMax = Vector2.zero;
-        blockerGO.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.6f);
+        var blocker = CardFactory.Stretch(canvasGO.transform, "Blocker", 0f).AddComponent<Image>();
+        blocker.color = new Color(0f, 0f, 0f, 0.6f);
 
-        var options = gameManager.RewardOptions;
-        int count = options.Count;
-        float totalWidth = count * rewardCardWidth + Mathf.Max(0, count - 1) * rewardCardGap;
-        float startX     = -totalWidth * 0.5f + rewardCardWidth * 0.5f;
+        var titleGO = new GameObject("RewardTitle", typeof(RectTransform));
+        titleGO.transform.SetParent(canvasGO.transform, false);
+        var titleRt = titleGO.GetComponent<RectTransform>();
+        titleRt.anchorMin        = titleRt.anchorMax = new Vector2(0.5f, 0.5f);
+        titleRt.sizeDelta        = new Vector2(900f, 60f);
+        titleRt.anchoredPosition = new Vector2(0f, cardHeight * 0.5f + 62f);
 
-        for (int i = 0; i < count; i++)
-        {
-            var card   = options[i];
-            var cardGO = new GameObject($"Reward_{card.cardName}", typeof(RectTransform), typeof(Image), typeof(Button));
-            cardGO.transform.SetParent(canvasGO.transform, false);
+        var title = titleGO.AddComponent<TextMeshProUGUI>();
+        title.text          = "PICK A CARD";
+        title.fontSize      = 34f;
+        title.fontStyle     = FontStyles.Bold;
+        title.alignment     = TextAlignmentOptions.Center;
+        title.color         = Color.white;
+        title.raycastTarget = false;
 
-            var rt = cardGO.GetComponent<RectTransform>();
-            rt.sizeDelta        = new Vector2(rewardCardWidth, rewardCardHeight);
-            rt.anchorMin        = rt.anchorMax = new Vector2(0.5f, 0.5f);
-            rt.anchoredPosition = new Vector2(startX + i * (rewardCardWidth + rewardCardGap), 0f);
+        var rowGO = new GameObject("CardRow", typeof(RectTransform), typeof(HorizontalLayoutGroup));
+        rowGO.transform.SetParent(canvasGO.transform, false);
 
-            cardGO.GetComponent<Image>().color = new Color(0.18f, 0.18f, 0.24f, 0.98f);
+        var rowRt = rowGO.GetComponent<RectTransform>();
+        rowRt.anchorMin = rowRt.anchorMax = rowRt.pivot = new Vector2(0.5f, 0.5f);
+        rowRt.sizeDelta = new Vector2(1400f, cardHeight + 40f);
 
-            var labelGO = new GameObject("Label", typeof(RectTransform));
-            labelGO.transform.SetParent(cardGO.transform, false);
-            var labelRt = labelGO.GetComponent<RectTransform>();
-            labelRt.anchorMin = Vector2.zero;
-            labelRt.anchorMax = Vector2.one;
-            labelRt.offsetMin = new Vector2(10f, 10f);
-            labelRt.offsetMax = new Vector2(-10f, -10f);
+        var layout = rowGO.GetComponent<HorizontalLayoutGroup>();
+        layout.childAlignment         = TextAnchor.MiddleCenter;
+        layout.childForceExpandWidth  = false;
+        layout.childForceExpandHeight = false;
+        layout.childControlWidth      = true;
+        layout.childControlHeight     = true;
 
-            var text = labelGO.AddComponent<TextMeshProUGUI>();
-            text.fontSize  = 20;
-            text.alignment = TextAlignmentOptions.Center;
-            text.color     = Color.white;
-            text.text      = $"{card.cardName}\n\n{card.description}\n\n{card.manaCost} mana";
-
-            var chosen = card; // capture for the closure
-            cardGO.GetComponent<Button>().onClick.AddListener(() => gameManager.ChooseReward(chosen));
-        }
-
-        _rewardCanvas = canvasGO;
+        return canvasGO;
     }
 
     private void HideRewardPopup()

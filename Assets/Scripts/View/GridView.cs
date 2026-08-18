@@ -194,7 +194,16 @@ public class GridView : MonoBehaviour
 
     private void SpawnScorePopup(EnclosureInstance instance, float score)
     {
-        ScorePopup.Spawn(EnclosurePivotWorld(instance, 0f) + Vector3.up, score, transform);
+        var basePos = EnclosurePivotWorld(instance, 0f);
+        float top   = basePos.y + 1f;
+
+        if (_enclosureViews.TryGetValue(instance, out var view) && view != null)
+        {
+            var renderers = view.GetComponentsInChildren<Renderer>();
+            foreach (var r in renderers) top = Mathf.Max(top, r.bounds.max.y + 0.4f);
+        }
+
+        ScorePopup.Spawn(new Vector3(basePos.x, top, basePos.z), score, transform);
     }
 
     private void OnSelectSlot(InputAction.CallbackContext ctx)

@@ -448,14 +448,20 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::HandHUD
   gridView: {fileID: 999632217}
   gameManager: {fileID: 800000003}
-  cardWidth: 110
-  cardHeight: 150
-  idealSpacing: 90
+  handCanvasPrefab: {fileID: 8236839617714767381, guid: 78a6746837f92464c87940c906bc0fe5, type: 3}
+  cardPrefab: {fileID: 8715369623350283553, guid: 118d4aab3029f7540ab90bd490443cc8, type: 3}
+  cardWidth: 128
+  cardHeight: 180
+  idealSpacing: 110
   maxRowWidth: 900
-  selectedYOffset: 36
-  bottomMargin: 40
-  cardColor: {r: 0.15, g: 0.15, b: 0.2, a: 0.95}
-  selectedColor: {r: 0.25, g: 0.55, b: 0.35, a: 1}
+  bottomMargin: 26
+  anglePerCard: 5.5
+  maxFanAngle: 22
+  arcHeight: 30
+  hoverLift: 40
+  selectLift: 68
+  hoverScale: 1.14
+  selectScale: 1.28
 --- !u!1 &701541823
 GameObject:
   m_ObjectHideFlags: 0
@@ -639,6 +645,12 @@ MonoBehaviour:
   - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a7, type: 2}
   - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889b1, type: 2}
   - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889b2, type: 2}
+  shopItems: {fileID: 11400000, guid: ade10b5be0cced3429f0a07b0c6a0b66, type: 2}
+  shopCardSlots: 4
+  shopLandSlots: 2
+  shopRerollCost: 2
+  weeklyBasePayout: 5
+  payoutPerScore: 0.15
   scoreWaveStagger: 0.25
   endOfDayPause: 2
 --- !u!1 &832575517
@@ -776,9 +788,12 @@ MonoBehaviour:
   scoreText: {fileID: 1960052737}
   dayText: {fileID: 1912559601}
   pathsText: {fileID: 0}
-  rewardCardWidth: 220
-  rewardCardHeight: 320
-  rewardCardGap: 40
+  rewardPopupPrefab: {fileID: 494663839685725484, guid: 101426cd28d36084c962a836242105cd, type: 3}
+  rewardCardPrefab: {fileID: 8715369623350283553, guid: 118d4aab3029f7540ab90bd490443cc8, type: 3}
+  shopOverlayPrefab: {fileID: 2812484024832622170, guid: 1ddb6f262c5cef441985594cbd6ea95d, type: 3}
+  rewardCardWidth: 210
+  rewardCardHeight: 294
+  rewardCardGap: 46
 --- !u!1 &1165998744
 GameObject:
   m_ObjectHideFlags: 0

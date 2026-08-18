@@ -21,10 +21,11 @@ MonoBehaviour:
   pivotCell: {x: 0, y: 0}
   shapeCanvasSize: 3
   baseValue: 12
+  lifespanDays: 0
   animalType: 2
   biomeType: 5
   ability: {fileID: 11400000, guid: 4cc6c49435cfcba4db162b4f7fef6625, type: 2}
-  prefab: {fileID: 3302826466289959117, guid: 4415341509781134aad3aaf1622293f5, type: 3}
+  prefab: {fileID: 3302826466289959117, guid: b3afe65818165944188fb0e13ab6bbe8, type: 3}
   prefabOffset: {x: 0, y: 0, z: 0}
   footprintColor: {r: 0.9, g: 0.6, b: 1, a: 0.6}
   cardShopImage: {fileID: 0}

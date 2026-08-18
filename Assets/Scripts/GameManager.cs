@@ -6,7 +6,7 @@ using UnityEngine;
 
 public class GameManager : MonoBehaviour
 {
-    public enum Phase { Build, Scoring, Reward }
+    public enum Phase { Build, Scoring, Reward, Shop }
 
     [Header("=======GAME MANAGER SINGLETON=======")]
     [DoNotSerialize] public static GameManager instance;
@@ -44,6 +44,14 @@ public class GameManager : MonoBehaviour
     [SerializeField] private float quotaGrowthPerWeek = 1.25f;
     [SerializeField] private CardData[] cardPool;
 
+    [Header("End-of-Week Shop")]
+    [SerializeField] private ShopItemsSO shopItems;
+    [SerializeField] private int   shopCardSlots    = 4;
+    [SerializeField] private int   shopLandSlots    = 2;
+    [SerializeField] private int   shopRerollCost   = 2;
+    [SerializeField] private int   weeklyBasePayout = 5;
+    [SerializeField] private float payoutPerScore   = 0.15f;
+
     [Header("Score Wave")]
     [SerializeField] private float scoreWaveStagger = 0.25f;
     [SerializeField] private float endOfDayPause    = 2f;
@@ -57,6 +65,7 @@ public class GameManager : MonoBehaviour
     private int   _currentDay;
     private float _quota;
     private float _weekScore;
+    private bool  _weekEnded;
     private List<CardData> _rewardOptions;
 
     public event Action OnHandChanged;
@@ -76,6 +85,9 @@ public class GameManager : MonoBehaviour
     public int   MaxMana       => _mana.Max;
     public IReadOnlyList<CardInstance> HandCards     => _hand.Cards;
     public IReadOnlyList<CardData>     RewardOptions => _rewardOptions;
+
+    public Shop CurrentShop   { get; private set; }
+    public int  ShopRerollCost => shopRerollCost;
 
     public int PathsRemaining => Grid != null ? Grid.PathsRemaining : 0;
     public int MaxPaths       => Grid != null ? Grid.MaxPaths       : 0;
@@ -121,9 +133,15 @@ public class GameManager : MonoBehaviour
 
     public bool TryBuyCard(CardData card)
     {
-        if (card == null || deck == null) return false;
+        if (card == null) return false;
         if (!TrySpendMoney(buyCardCost)) return false;
-        deck.AddCard(card);
+
+        if (deck != null) deck.AddCard(card);
+        _hand.Add(card);
+
+        LogState($"Bought '{card.cardName}' for {buyCardCost}");
+        OnHandChanged?.Invoke();
+        OnEconomyChanged?.Invoke();
         return true;
     }
 
@@ -131,7 +149,9 @@ public class GameManager : MonoBehaviour
     {
         if (landTile == null) return false;
         if (!TrySpendMoney(buyLandCost)) return false;
+
         purchasedLand.Add(landTile);
+        OnEconomyChanged?.Invoke();
         return true;
     }
 
@@ -223,6 +243,11 @@ public class GameManager : MonoBehaviour
                 ? $"[SkyZoo] Week {_week} complete — quota met! ({_weekScore:0.#}/{_quota:0.#})"
                 : $"[SkyZoo] Week {_week} FAILED quota. ({_weekScore:0.#}/{_quota:0.#})");
 
+            int payout = weeklyBasePayout + Mathf.FloorToInt(_weekScore * payoutPerScore);
+            money += payout;
+            Debug.Log($"[SkyZoo] Week {_week} payout: +{payout} money (total {money}).");
+
+            _weekEnded = true;
             _week++;
             _quota    *= quotaGrowthPerWeek;
             _weekScore = 0f;
@@ -248,11 +273,44 @@ public class GameManager : MonoBehaviour
 
         _hand.Add(card);
         _rewardOptions = null;
-        _phase = Phase.Build;
 
         LogState($"Added '{card.cardName}' to hand from daily reward");
         OnHandChanged?.Invoke();
+
+        if (_weekEnded) OpenShop();
+        else            _phase = Phase.Build;
+
         OnPhaseChanged?.Invoke();
+    }
+
+    private void OpenShop()
+    {
+        _weekEnded = false;
+        CurrentShop = new Shop(shopItems, shopCardSlots, shopLandSlots, 1);
+        _phase = Phase.Shop;
+
+        Debug.Log($"[SkyZoo] Shop open — {money} money on hand.");
+    }
+
+    public void CloseShop()
+    {
+        if (_phase != Phase.Shop) return;
+
+        CurrentShop = null;
+        _phase = Phase.Build;
+
+        LogState($"Left the shop with {money} money");
+        OnPhaseChanged?.Invoke();
+    }
+
+    public bool TryRerollShop()
+    {
+        if (_phase != Phase.Shop || CurrentShop == null) return false;
+        if (!TrySpendMoney(shopRerollCost)) return false;
+
+        CurrentShop.Reroll();
+        OnEconomyChanged?.Invoke();
+        return true;
     }
 
     private List<CardData> PickRandomCards(int n)

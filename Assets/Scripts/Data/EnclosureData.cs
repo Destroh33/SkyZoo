@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.UI;
 
 [CreateAssetMenu(fileName = "EnclosureData", menuName = "SkyZoo/Enclosure Data")]
 public class EnclosureData : ScriptableObject
@@ -27,7 +26,7 @@ public class EnclosureData : ScriptableObject
     public GameObject prefab;
     public Vector3    prefabOffset;
     public Color      footprintColor = new(0.2f, 0.8f, 0.2f, 0.6f);
-    public Image cardShopImage;
+    public Sprite cardShopImage;
     public int shopCost;
 
     public IReadOnlyList<Vector2Int> ShapeCells { get { EnsureShape(); return shapeCells; } }
