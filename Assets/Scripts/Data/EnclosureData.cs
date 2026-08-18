@@ -20,6 +20,7 @@ public class EnclosureData : ScriptableObject
     [SerializeField] private int shapeCanvasSize = 3;
 
     public int        baseValue = 10;
+    public int        lifespanDays;
     public AnimalType animalType;
     public BiomeType  biomeType;
     public EnclosureAbility ability;

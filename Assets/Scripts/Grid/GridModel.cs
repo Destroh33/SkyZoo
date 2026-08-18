@@ -65,7 +65,11 @@ public class GridModel
 
     public EnclosureInstance PlaceEnclosure(EnclosureData data, Vector2Int originHalf, int rotation = 0, int manaCostPaid = 0)
     {
-        var instance = new EnclosureInstance(data, originHalf, rotation) { ManaCostPaid = manaCostPaid };
+        var instance = new EnclosureInstance(data, originHalf, rotation)
+        {
+            ManaCostPaid = manaCostPaid,
+            DayPlaced    = CurrentDay
+        };
         RegisterEnclosureAt(instance, originHalf, rotation);
         return instance;
     }
@@ -248,6 +252,36 @@ public class GridModel
             TryAdd(c.x + 1, c.y);
         }
 
+        return result;
+    }
+
+    public List<EnclosureInstance> GetEnclosuresInRadius(EnclosureInstance instance, int radius)
+    {
+        var result = new List<EnclosureInstance>();
+        if (radius < 0) return result;
+
+        foreach (var c in instance.Cells)
+        {
+            for (int dx = -radius; dx <= radius; dx++)
+                for (int dy = -radius; dy <= radius; dy++)
+                {
+                    int x = c.x + dx;
+                    int y = c.y + dy;
+                    if (x < 0 || x >= Width || y < 0 || y >= Height) continue;
+
+                    var cell = _cells[x, y];
+                    if (cell != null && cell != instance && !result.Contains(cell)) result.Add(cell);
+                }
+        }
+
+        return result;
+    }
+
+    public List<EnclosureInstance> GetExpiredEnclosures(int currentDay)
+    {
+        var result = new List<EnclosureInstance>();
+        foreach (var e in _enclosures)
+            if (e.IsExpired(currentDay)) result.Add(e);
         return result;
     }
 

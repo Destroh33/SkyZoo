@@ -11,6 +11,14 @@ public class EnclosureInstance
 
     public int ManaCostPaid { get; set; }
 
+    public int DayPlaced { get; set; }
+
+    public bool HasLifespan => Data.lifespanDays > 0;
+
+    public int ExpiresOnDay => HasLifespan ? DayPlaced + Data.lifespanDays : int.MaxValue;
+
+    public bool IsExpired(int currentDay) => HasLifespan && currentDay >= ExpiresOnDay;
+
     public int PermanentBonus { get; private set; }
 
     private readonly List<TimedBonus> _timedBonuses = new();

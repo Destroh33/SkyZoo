@@ -404,16 +404,23 @@ public class GridView : MonoBehaviour
         var instance = _model.GetCell(cell.x, cell.y);
         if (instance == null) return;
 
-        _model.RemoveEnclosure(instance);
+        DespawnEnclosure(instance);
         int refund = Game.RefundForEnclosure(instance);
+
+        Game.LogState($"Removed '{instance.Data.enclosureName}' → refunded {refund} mana");
+    }
+
+    public void DespawnEnclosure(EnclosureInstance instance)
+    {
+        if (instance == null) return;
+
+        _model.RemoveEnclosure(instance);
 
         if (_enclosureViews.TryGetValue(instance, out var go))
         {
             Destroy(go);
             _enclosureViews.Remove(instance);
         }
-
-        Game.LogState($"Removed '{instance.Data.enclosureName}' → refunded {refund} mana");
     }
 
     private void UpdateHoverPreview(Vector3 hit)

@@ -205,6 +205,13 @@ public class GameManager : MonoBehaviour
         }
 
         foreach (var e in model.Enclosures) e.ExpireBonuses(_currentDay);
+
+        foreach (var expired in model.GetExpiredEnclosures(_currentDay))
+        {
+            Debug.Log($"[SkyZoo] '{expired.Data.enclosureName}' reached the end of its lifespan and left the zoo.");
+            Grid.DespawnEnclosure(expired);
+        }
+
         _mana.RefillForNewDay();
 
         LogState($"Day {_day}/{daysPerWeek} scored → week total {_weekScore:0.#}/{_quota:0.#}");

@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0a4520923ce932a44be5059af99caacb, type: 3}
+  m_Name: Hamster
+  m_EditorClassIdentifier: Assembly-CSharp::EnclosureData
+  enclosureName: Hamster Hutch
+  size: {x: 1, y: 1}
+  shapeCells:
+  - {x: 0, y: 0}
+  pivotHalf: {x: 1, y: 1}
+  pivotCell: {x: 0, y: 0}
+  shapeCanvasSize: 3
+  baseValue: 4
+  lifespanDays: 2
+  animalType: 1
+  biomeType: 4
+  ability: {fileID: 11400000, guid: b1c2d3e4f5a6011223344556677889b1, type: 2}
+  prefab: {fileID: 3302826466289959117, guid: 235d0efb57168cc47aba7eb8639566ff, type: 3}
+  prefabOffset: {x: 0, y: 0, z: 0}
+  footprintColor: {r: 0.85, g: 0.7, b: 0.45, a: 0.6}
+  cardShopImage: {fileID: 0}
+  shopCost: 1

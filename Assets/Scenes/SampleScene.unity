@@ -637,6 +637,8 @@ MonoBehaviour:
   - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a5, type: 2}
   - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a6, type: 2}
   - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889a7, type: 2}
+  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889b1, type: 2}
+  - {fileID: 11400000, guid: d1e2f3a4b5c6011223344556677889b2, type: 2}
   scoreWaveStagger: 0.25
   endOfDayPause: 2
 --- !u!1 &832575517
