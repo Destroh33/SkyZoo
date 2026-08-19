@@ -8,19 +8,11 @@ public static class UISprites
 
     private static Sprite _roundedRect;
     private static Sprite _circle;
-    private static Sprite _panel;
-    private static Sprite _pill;
-    private static Sprite _ring;
 
     public static Sprite RoundedRect => _roundedRect != null ? _roundedRect : _roundedRect = MakeRounded(PanelSize, PanelRadius);
     public static Sprite Circle      => _circle      != null ? _circle      : _circle      = MakeCircle(CircleSize);
-    public static Sprite Panel       => _panel       != null ? _panel       : _panel       = MakeRounded(PanelSize, 22f);
-    public static Sprite Pill        => _pill        != null ? _pill        : _pill        = MakeRounded(PanelSize, PanelSize * 0.5f);
-    public static Sprite Ring        => _ring        != null ? _ring        : _ring        = MakeRing(CircleSize, 7f, 5f);
 
-    public static float BorderFor(int size, float radius) => Mathf.Min(radius + 2f, size * 0.5f - 1f);
-
-    public static Texture2D RoundedTexture(int size, float radius)
+    private static Texture2D RoundedTexture(int size, float radius)
     {
         radius = Mathf.Clamp(radius, 1f, size * 0.5f);
 
@@ -46,7 +38,7 @@ public static class UISprites
         return tex;
     }
 
-    public static Texture2D CircleTexture(int size)
+    private static Texture2D CircleTexture(int size)
     {
         var tex    = NewTexture(size, size);
         var pixels = new Color32[size * size];
@@ -66,30 +58,9 @@ public static class UISprites
         return tex;
     }
 
-    public static Texture2D RingTexture(int size, float inset, float thickness)
-    {
-        var tex    = NewTexture(size, size);
-        var pixels = new Color32[size * size];
-        float half = size * 0.5f;
-
-        for (int y = 0; y < size; y++)
-        {
-            for (int x = 0; x < size; x++)
-            {
-                float r = new Vector2(x + 0.5f - half, y + 0.5f - half).magnitude;
-                float d = Mathf.Abs(r - (half - inset)) - thickness;
-                pixels[y * size + x] = WhiteWithAlpha(Mathf.Clamp01(0.5f - d));
-            }
-        }
-
-        tex.SetPixels32(pixels);
-        tex.Apply();
-        return tex;
-    }
-
     private static Sprite MakeRounded(int size, float radius)
     {
-        float b = BorderFor(size, radius);
+        float b = Mathf.Min(radius + 2f, size * 0.5f - 1f);
         return Sprite.Create(RoundedTexture(size, radius), new Rect(0f, 0f, size, size),
                              new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect,
                              new Vector4(b, b, b, b));
@@ -97,10 +68,6 @@ public static class UISprites
 
     private static Sprite MakeCircle(int size)
         => Sprite.Create(CircleTexture(size), new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f));
-
-    private static Sprite MakeRing(int size, float inset, float thickness)
-        => Sprite.Create(RingTexture(size, inset, thickness), new Rect(0f, 0f, size, size),
-                         new Vector2(0.5f, 0.5f));
 
     private static Texture2D NewTexture(int width, int height)
     {

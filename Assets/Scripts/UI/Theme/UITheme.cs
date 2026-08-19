@@ -35,13 +35,13 @@ public class UITheme : ScriptableObject
     public Color day    = new(0.98f, 0.85f, 0.42f, 1f);
     public Color danger = new(0.96f, 0.33f, 0.37f, 1f);
 
-    [Header("Shapes (leave empty for procedural)")]
+    [Header("Shapes")]
     public Sprite panelSprite;
     public Sprite pillSprite;
     public Sprite badgeSprite;
     public Sprite buttonSprite;
 
-    [Header("Icons (leave empty for procedural)")]
+    [Header("Icons")]
     public Sprite manaIcon;
     public Sprite scoreIcon;
     public Sprite quotaIcon;
@@ -54,17 +54,17 @@ public class UITheme : ScriptableObject
     public float shadowDrop   = 6f;
     public float cornerScale  = 1f;
 
-    public Sprite PanelShape  => panelSprite  != null ? panelSprite  : UISprites.Panel;
-    public Sprite PillShape   => pillSprite   != null ? pillSprite   : UISprites.Pill;
-    public Sprite BadgeShape  => badgeSprite  != null ? badgeSprite  : UISprites.Circle;
-    public Sprite ButtonShape => buttonSprite != null ? buttonSprite : UISprites.Panel;
+    public Sprite PanelShape  => panelSprite;
+    public Sprite PillShape   => pillSprite;
+    public Sprite BadgeShape  => badgeSprite  != null ? badgeSprite : UISprites.Circle;
+    public Sprite ButtonShape => buttonSprite;
 
-    public Sprite ManaIcon  => manaIcon  != null ? manaIcon  : UIIcons.Mana;
-    public Sprite ScoreIcon => scoreIcon != null ? scoreIcon : UIIcons.Score;
-    public Sprite QuotaIcon => quotaIcon != null ? quotaIcon : UIIcons.Quota;
-    public Sprite DayIcon   => dayIcon   != null ? dayIcon   : UIIcons.Day;
-    public Sprite PathIcon  => pathIcon  != null ? pathIcon  : UIIcons.Path;
-    public Sprite MoneyIcon => moneyIcon != null ? moneyIcon : UIIcons.Money;
+    public Sprite ManaIcon  => manaIcon;
+    public Sprite ScoreIcon => scoreIcon;
+    public Sprite QuotaIcon => quotaIcon;
+    public Sprite DayIcon   => dayIcon;
+    public Sprite PathIcon  => pathIcon;
+    public Sprite MoneyIcon => moneyIcon;
 
     private static UITheme _active;
 
