@@ -15,4 +15,6 @@ MonoBehaviour:
   cardName: Zebra Enclosure
   description: Place a Zebra (2x3). +8 points on odd days.
   manaCost: 2
+  art: {fileID: 21300000, guid: 9d7932d75d411bc4dab03a3b4d014a44, type: 3}
+  accentColor: {r: 0.35, g: 0.45, b: 0.6, a: 1}
   enclosure: {fileID: 11400000, guid: c1d2e3f4a5b6011223344556677889a2, type: 2}
