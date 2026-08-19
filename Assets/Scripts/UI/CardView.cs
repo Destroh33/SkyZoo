@@ -117,8 +117,7 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
         _glowAlpha = Mathf.MoveTowards(_glowAlpha, _selected ? 1f : (_hovered ? 0.45f : 0f), dt * 7f);
 
         if (_binder.frame != null)
-            _binder.frame.color = Color.Lerp(_binder.frameColor, _binder.selectedColor,
-                                             _selected ? 1f : (_hovered ? 0.35f : 0f));
+            _binder.frame.color = _binder.FrameTint(_selected ? 1f : (_hovered ? 0.35f : 0f));
 
         Apply();
     }

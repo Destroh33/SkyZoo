@@ -140,7 +140,7 @@ public class ShopOverlay : MonoBehaviour
             return slot;
         }
 
-        var binder = CardFactory.Create(cardPrefab, rt, card, shopCardSize, true);
+        var binder = CardFactory.Create(cardPrefab, rt, card, shopCardSize);
 
         var view = binder.gameObject.AddComponent<CardView>();
         view.Init(binder, card, null, 18f, 18f, 1.07f, 1.07f, _ => OnBuyCard(index));

@@ -227,7 +227,7 @@ public class PhaseHUD : MonoBehaviour
             element.preferredHeight = rewardCardHeight;
 
             var binder = CardFactory.Create(rewardCardPrefab, slot.transform, card,
-                                            new Vector2(rewardCardWidth, rewardCardHeight), true);
+                                            new Vector2(rewardCardWidth, rewardCardHeight));
 
             var chosen = card;
             var view   = binder.gameObject.AddComponent<CardView>();

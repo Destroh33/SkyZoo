@@ -149,7 +149,7 @@ public class HandHUD : MonoBehaviour
     private CardView CreateCard(CardInstance card)
     {
         var binder = CardFactory.Create(cardPrefab, _row, card.Data,
-                                        new Vector2(cardWidth, cardHeight), false);
+                                        new Vector2(cardWidth, cardHeight));
 
         var view = binder.gameObject.AddComponent<CardView>();
         view.Init(binder, card.Data, card, hoverLift, selectLift, hoverScale, selectScale, OnCardClicked);

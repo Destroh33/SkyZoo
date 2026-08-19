@@ -6,8 +6,7 @@ public static class CardFactory
 {
     public static readonly Vector2 ReferenceSize = new(180f, 252f);
 
-    public static CardBinder Create(GameObject prefab, Transform parent, CardData data,
-                                    Vector2 size, bool showDescription)
+    public static CardBinder Create(GameObject prefab, Transform parent, CardData data, Vector2 size)
     {
         var binder = prefab != null
             ? Object.Instantiate(prefab, parent).GetComponent<CardBinder>()
@@ -22,7 +21,6 @@ public static class CardFactory
         binder.name = $"Card_{data.cardName}";
         binder.SetSize(size);
         binder.Bind(data);
-        binder.ShowDescription(showDescription);
         return binder;
     }
 
@@ -65,12 +63,8 @@ public static class CardFactory
                                  TextAlignmentOptions.Center);
         binder.initial.color = new Color(1f, 1f, 1f, 0.75f);
 
-        binder.nameText = AddText(Region(frameGO.transform, "Name", 0.36f, 0.48f, 5f),
+        binder.nameText = AddText(Region(frameGO.transform, "Name", 0.10f, 0.23f, 5f),
                                   "Card Name", 17f, TextAlignmentOptions.Center);
-
-        binder.descriptionText = AddText(Region(frameGO.transform, "Description", 0.04f, 0.36f, 8f),
-                                         "Description", 13f, TextAlignmentOptions.Top);
-        binder.descriptionText.color = new Color(0.82f, 0.84f, 0.9f, 1f);
 
         BuildCostBadge(frameGO.transform, binder);
 
