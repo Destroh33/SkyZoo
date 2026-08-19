@@ -13,7 +13,9 @@ MonoBehaviour:
   m_Name: PolarBearCard
   m_EditorClassIdentifier: Assembly-CSharp::EnclosureCardData
   cardName: Polar Bear Enclosure
-  description: 'Place a Polar Bear Enclosure (3x3). High base value. +4 per degree
-    of cold, -4 per degree of heat, across every exhibit within 2 cells.'
+  description: Place a Polar Bear Enclosure (3x3). High base value. +4 per degree
+    of cold, -4 per degree of heat, across every exhibit within 2 cells.
   manaCost: 3
+  art: {fileID: 21300000, guid: e73c250da5674c341930beb6da1ba1c1, type: 3}
+  accentColor: {r: 0.35, g: 0.45, b: 0.6, a: 1}
   enclosure: {fileID: 11400000, guid: c1d2e3f4a5b6011223344556677889b2, type: 2}

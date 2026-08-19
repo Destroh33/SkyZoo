@@ -15,4 +15,6 @@ MonoBehaviour:
   cardName: Lion Enclosure
   description: Place a Lion Enclosure (3x3).
   manaCost: 3
+  art: {fileID: 21300000, guid: c67593dead17f264bbbe4874c59d1c3e, type: 3}
+  accentColor: {r: 0.35, g: 0.45, b: 0.6, a: 1}
   enclosure: {fileID: 11400000, guid: c1ed6ffb199eaa442bc80d478b055e13, type: 2}
