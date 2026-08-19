@@ -8,67 +8,108 @@ public static class UISprites
 
     private static Sprite _roundedRect;
     private static Sprite _circle;
+    private static Sprite _panel;
+    private static Sprite _pill;
+    private static Sprite _ring;
 
-    public static Sprite RoundedRect => _roundedRect != null ? _roundedRect : _roundedRect = BuildRoundedRect();
-    public static Sprite Circle      => _circle      != null ? _circle      : _circle      = BuildCircle();
+    public static Sprite RoundedRect => _roundedRect != null ? _roundedRect : _roundedRect = MakeRounded(PanelSize, PanelRadius);
+    public static Sprite Circle      => _circle      != null ? _circle      : _circle      = MakeCircle(CircleSize);
+    public static Sprite Panel       => _panel       != null ? _panel       : _panel       = MakeRounded(PanelSize, 22f);
+    public static Sprite Pill        => _pill        != null ? _pill        : _pill        = MakeRounded(PanelSize, PanelSize * 0.5f);
+    public static Sprite Ring        => _ring        != null ? _ring        : _ring        = MakeRing(CircleSize, 7f, 5f);
 
-    private static Sprite BuildRoundedRect()
+    public static float BorderFor(int size, float radius) => Mathf.Min(radius + 2f, size * 0.5f - 1f);
+
+    public static Texture2D RoundedTexture(int size, float radius)
     {
-        var tex    = NewTexture(PanelSize, PanelSize);
-        var pixels = new Color32[PanelSize * PanelSize];
-        float half = PanelSize * 0.5f;
+        radius = Mathf.Clamp(radius, 1f, size * 0.5f);
 
-        for (int y = 0; y < PanelSize; y++)
+        var tex    = NewTexture(size, size);
+        var pixels = new Color32[size * size];
+        float half = size * 0.5f;
+
+        for (int y = 0; y < size; y++)
         {
-            for (int x = 0; x < PanelSize; x++)
+            for (int x = 0; x < size; x++)
             {
-                float dx = Mathf.Abs(x + 0.5f - half) - (half - PanelRadius);
-                float dy = Mathf.Abs(y + 0.5f - half) - (half - PanelRadius);
+                float dx = Mathf.Abs(x + 0.5f - half) - (half - radius);
+                float dy = Mathf.Abs(y + 0.5f - half) - (half - radius);
                 float d  = new Vector2(Mathf.Max(dx, 0f), Mathf.Max(dy, 0f)).magnitude
-                           + Mathf.Min(Mathf.Max(dx, dy), 0f) - PanelRadius;
+                           + Mathf.Min(Mathf.Max(dx, dy), 0f) - radius;
 
-                pixels[y * PanelSize + x] = WhiteWithAlpha(Mathf.Clamp01(0.5f - d));
+                pixels[y * size + x] = WhiteWithAlpha(Mathf.Clamp01(0.5f - d));
             }
         }
 
         tex.SetPixels32(pixels);
         tex.Apply();
-
-        float b = PanelRadius + 2f;
-        return Sprite.Create(tex, new Rect(0f, 0f, PanelSize, PanelSize), new Vector2(0.5f, 0.5f),
-                             100f, 0, SpriteMeshType.FullRect, new Vector4(b, b, b, b));
+        return tex;
     }
 
-    private static Sprite BuildCircle()
+    public static Texture2D CircleTexture(int size)
     {
-        var tex    = NewTexture(CircleSize, CircleSize);
-        var pixels = new Color32[CircleSize * CircleSize];
-        float half = CircleSize * 0.5f;
+        var tex    = NewTexture(size, size);
+        var pixels = new Color32[size * size];
+        float half = size * 0.5f;
 
-        for (int y = 0; y < CircleSize; y++)
+        for (int y = 0; y < size; y++)
         {
-            for (int x = 0; x < CircleSize; x++)
+            for (int x = 0; x < size; x++)
             {
                 float d = new Vector2(x + 0.5f - half, y + 0.5f - half).magnitude - (half - 1f);
-                pixels[y * CircleSize + x] = WhiteWithAlpha(Mathf.Clamp01(0.5f - d));
+                pixels[y * size + x] = WhiteWithAlpha(Mathf.Clamp01(0.5f - d));
             }
         }
 
         tex.SetPixels32(pixels);
         tex.Apply();
-
-        return Sprite.Create(tex, new Rect(0f, 0f, CircleSize, CircleSize), new Vector2(0.5f, 0.5f));
+        return tex;
     }
+
+    public static Texture2D RingTexture(int size, float inset, float thickness)
+    {
+        var tex    = NewTexture(size, size);
+        var pixels = new Color32[size * size];
+        float half = size * 0.5f;
+
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float r = new Vector2(x + 0.5f - half, y + 0.5f - half).magnitude;
+                float d = Mathf.Abs(r - (half - inset)) - thickness;
+                pixels[y * size + x] = WhiteWithAlpha(Mathf.Clamp01(0.5f - d));
+            }
+        }
+
+        tex.SetPixels32(pixels);
+        tex.Apply();
+        return tex;
+    }
+
+    private static Sprite MakeRounded(int size, float radius)
+    {
+        float b = BorderFor(size, radius);
+        return Sprite.Create(RoundedTexture(size, radius), new Rect(0f, 0f, size, size),
+                             new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect,
+                             new Vector4(b, b, b, b));
+    }
+
+    private static Sprite MakeCircle(int size)
+        => Sprite.Create(CircleTexture(size), new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f));
+
+    private static Sprite MakeRing(int size, float inset, float thickness)
+        => Sprite.Create(RingTexture(size, inset, thickness), new Rect(0f, 0f, size, size),
+                         new Vector2(0.5f, 0.5f));
 
     private static Texture2D NewTexture(int width, int height)
     {
-        var tex = new Texture2D(width, height, TextureFormat.RGBA32, false)
+        return new Texture2D(width, height, TextureFormat.RGBA32, false)
         {
             hideFlags  = HideFlags.HideAndDontSave,
             filterMode = FilterMode.Bilinear,
             wrapMode   = TextureWrapMode.Clamp
         };
-        return tex;
     }
 
     private static Color32 WhiteWithAlpha(float a) => new(255, 255, 255, (byte)Mathf.RoundToInt(a * 255f));

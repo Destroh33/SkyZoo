@@ -72,6 +72,7 @@ public class GameManager : MonoBehaviour
     public event Action OnEconomyChanged;
     public event Action OnPhaseChanged;
     public event Action<EnclosureInstance, float> OnEnclosureScored;
+    public event Action OnManaDenied;
 
     public Phase CurrentPhase  => _phase;
     public bool  InBuildPhase  => _phase == Phase.Build;
@@ -163,6 +164,7 @@ public class GameManager : MonoBehaviour
         if (!_mana.TrySpend(card.Data.manaCost))
         {
             Debug.Log($"[SkyZoo] Not enough mana to play '{card.Data.cardName}' (need {card.Data.manaCost}, have {_mana.Current}).");
+            OnManaDenied?.Invoke();
             return false;
         }
 
@@ -248,14 +250,6 @@ public class GameManager : MonoBehaviour
             Debug.Log($"[SkyZoo] Week {_week} payout: +{payout} money (total {money}).");
 
             _weekEnded = true;
-            _week++;
-            _quota    *= quotaGrowthPerWeek;
-            _weekScore = 0f;
-            _day       = 1;
-        }
-        else
-        {
-            _day++;
         }
 
         OnEconomyChanged?.Invoke();
@@ -277,15 +271,22 @@ public class GameManager : MonoBehaviour
         LogState($"Added '{card.cardName}' to hand from daily reward");
         OnHandChanged?.Invoke();
 
-        if (_weekEnded) OpenShop();
-        else            _phase = Phase.Build;
+        if (_weekEnded)
+        {
+            OpenShop();
+        }
+        else
+        {
+            _day++;
+            _phase = Phase.Build;
+        }
 
+        OnEconomyChanged?.Invoke();
         OnPhaseChanged?.Invoke();
     }
 
     private void OpenShop()
     {
-        _weekEnded = false;
         CurrentShop = new Shop(shopItems, shopCardSlots, shopLandSlots, 1);
         _phase = Phase.Shop;
 
@@ -297,9 +298,20 @@ public class GameManager : MonoBehaviour
         if (_phase != Phase.Shop) return;
 
         CurrentShop = null;
+
+        if (_weekEnded)
+        {
+            _weekEnded = false;
+            _week++;
+            _quota    *= quotaGrowthPerWeek;
+            _weekScore = 0f;
+            _day       = 1;
+        }
+
         _phase = Phase.Build;
 
-        LogState($"Left the shop with {money} money");
+        LogState($"Left the shop with {money} money — week {_week} begins (quota {_quota:0.#})");
+        OnEconomyChanged?.Invoke();
         OnPhaseChanged?.Invoke();
     }
 

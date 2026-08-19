@@ -5,37 +5,36 @@ using UnityEngine.UI;
 
 public class ShopOverlay : MonoBehaviour
 {
+    [Header("Theme")]
+    [SerializeField] private UITheme theme;
+
     [Header("Wired by the prefab (auto-built if empty)")]
     [SerializeField] private RectTransform panel;
-    [SerializeField] private TMP_Text      moneyText;
-    [SerializeField] private TMP_Text      rerollLabel;
-    [SerializeField] private Button        rerollButton;
-    [SerializeField] private Button        leaveButton;
+    [SerializeField] private StatChip      moneyChip;
+    [SerializeField] private ChunkyButton  rerollButton;
+    [SerializeField] private ChunkyButton  leaveButton;
     [SerializeField] private RectTransform cardRow;
     [SerializeField] private RectTransform landRow;
 
-    [Header("Prefabs (leave empty to generate at runtime)")]
+    [Header("Slot prefabs (leave empty to generate at runtime)")]
     [SerializeField] private GameObject cardPrefab;
+    [SerializeField] private GameObject landButtonPrefab;
 
     [Header("Sizing")]
     [SerializeField] private Vector2 shopCardSize = new(180f, 252f);
-    [SerializeField] private Vector2 landSlotSize = new(210f, 96f);
+    [SerializeField] private Vector2 landSlotSize = new(210f, 116f);
     [SerializeField] private float   priceDrop    = 22f;
 
-    private static readonly Vector2 PanelSize = new(1160f, 660f);
-
-    private static readonly Color PanelColor  = new(0.09f, 0.10f, 0.14f, 0.98f);
-    private static readonly Color SlotColor   = new(0.16f, 0.17f, 0.23f, 1f);
-    private static readonly Color LandColor   = new(0.20f, 0.30f, 0.24f, 1f);
-    private static readonly Color ButtonColor = new(0.24f, 0.26f, 0.34f, 1f);
-    private static readonly Color GoldColor   = new(1f, 0.86f, 0.35f, 1f);
+    private static readonly Vector2 PanelSize = new(1160f, 680f);
 
     private GameManager _gm;
 
-    private readonly List<GameObject> _cardSlots   = new();
-    private readonly List<GameObject> _landSlots   = new();
-    private readonly List<CardView>   _cardViews   = new();
-    private readonly List<Button>     _landButtons = new();
+    private readonly List<GameObject>   _cardSlots   = new();
+    private readonly List<GameObject>   _landSlots   = new();
+    private readonly List<CardView>     _cardViews   = new();
+    private readonly List<ChunkyButton> _landButtons = new();
+
+    private UITheme Theme => theme != null ? theme : theme = UITheme.Active;
 
     public static ShopOverlay Create(GameManager gameManager, GameObject prefab)
     {
@@ -55,33 +54,31 @@ public class ShopOverlay : MonoBehaviour
 
         if (panel == null) WireParts();
 
-        if (rerollButton != null)
-        {
-            rerollButton.onClick.RemoveAllListeners();
-            rerollButton.onClick.AddListener(OnReroll);
-        }
-
-        if (leaveButton != null)
-        {
-            leaveButton.onClick.RemoveAllListeners();
-            leaveButton.onClick.AddListener(OnLeave);
-        }
+        if (rerollButton != null) rerollButton.SetOnClick(OnReroll);
+        if (leaveButton  != null) leaveButton.SetOnClick(OnLeave);
+        if (moneyChip    != null) moneyChip.SetPrefix("$");
 
         BuildSlots();
         Refresh();
 
+        Sfx.RewardAppear();
         _gm.OnEconomyChanged += Refresh;
+    }
+
+    public void SetSlotPrefabs(GameObject card, GameObject landButton)
+    {
+        cardPrefab       = card;
+        landButtonPrefab = landButton;
     }
 
     public void WireParts()
     {
         panel        = transform.Find("Panel") as RectTransform;
-        moneyText    = Find<TMP_Text>("Panel/Money");
         cardRow      = transform.Find("Panel/CardRow") as RectTransform;
         landRow      = transform.Find("Panel/LandRow") as RectTransform;
-        rerollButton = Find<Button>("Panel/Reroll");
-        leaveButton  = Find<Button>("Panel/Leave");
-        rerollLabel  = Find<TMP_Text>("Panel/Reroll/Label");
+        moneyChip    = Find<StatChip>("Panel/Chip_Money");
+        rerollButton = Find<ChunkyButton>("Panel/Button_Reroll");
+        leaveButton  = Find<ChunkyButton>("Panel/Button_Leave");
     }
 
     private T Find<T>(string path) where T : Component
@@ -150,10 +147,7 @@ public class ShopOverlay : MonoBehaviour
         view.SetSlot(Vector2.zero, 0f, index);
         _cardViews.Add(view);
 
-        var price = MakeLabel(rt, "Price", "", 20f, TextAlignmentOptions.Center,
-                              new Vector2(0.5f, 0f), new Vector2(0f, -priceDrop));
-        price.color = GoldColor;
-
+        PriceLabel(rt, new Vector2(0.5f, 0f), new Vector2(0f, -priceDrop));
         return slot;
     }
 
@@ -169,37 +163,34 @@ public class ShopOverlay : MonoBehaviour
             return slot;
         }
 
-        var image = slot.AddComponent<Image>();
-        image.sprite = UISprites.RoundedRect;
-        image.type   = Image.Type.Sliced;
-        image.color  = LandColor;
-
-        var button = slot.AddComponent<Button>();
-        button.targetGraphic = image;
-        button.onClick.AddListener(() => OnBuyLand(index));
+        var button = ChunkyButton.Create(landButtonPrefab, rt, item.name,
+                                         new Vector2(landSlotSize.x, landSlotSize.y - 34f),
+                                         Theme, Theme.quota);
+        button.Rect.anchoredPosition = new Vector2(0f, 14f);
+        button.SetOnClick(() => OnBuyLand(index));
         _landButtons.Add(button);
 
-        MakeLabel(rt, "Label", item.name, 18f, TextAlignmentOptions.Center,
-                  new Vector2(0.5f, 0.5f), new Vector2(0f, 14f));
-
-        var price = MakeLabel(rt, "Price", "", 18f, TextAlignmentOptions.Center,
-                              new Vector2(0.5f, 0.5f), new Vector2(0f, -18f));
-        price.color = GoldColor;
-
+        PriceLabel(rt, new Vector2(0.5f, 0f), new Vector2(0f, 14f));
         return slot;
+    }
+
+    private TMP_Text PriceLabel(RectTransform parent, Vector2 anchor, Vector2 position)
+    {
+        var price = Label(parent, Theme, "Price", "", UITheme.Role.Number, 20f, Theme.money,
+                          TextAlignmentOptions.Center, anchor, position);
+        return price;
     }
 
     private void SoldOutPlaceholder(RectTransform parent)
     {
         var backing = CardFactory.Stretch(parent, "Empty", 0f).AddComponent<Image>();
-        backing.sprite        = UISprites.RoundedRect;
-        backing.type          = Image.Type.Sliced;
-        backing.color         = SlotColor;
+        backing.sprite        = Theme.PanelShape;
+        backing.type          = StatChip.SpriteType(Theme.PanelShape);
+        backing.color         = Theme.panel;
         backing.raycastTarget = false;
 
-        var label = MakeLabel(parent, "SoldOut", "SOLD", 20f, TextAlignmentOptions.Center,
-                              new Vector2(0.5f, 0.5f), Vector2.zero);
-        label.color = new Color(0.45f, 0.47f, 0.55f, 1f);
+        Label(parent, Theme, "SoldOut", Theme.Label("Sold"), UITheme.Role.Display, 20f, Theme.textMuted,
+              TextAlignmentOptions.Center, new Vector2(0.5f, 0.5f), Vector2.zero);
     }
 
     private void OnBuyCard(int index)
@@ -208,10 +199,15 @@ public class ShopOverlay : MonoBehaviour
         if (shop != null && shop.BuyCard(index, _gm))
         {
             Sfx.Buy();
+            if (moneyChip != null) moneyChip.Punch(0.24f);
             BuildSlots();
             Refresh();
         }
-        else Sfx.Invalid();
+        else
+        {
+            Sfx.Invalid();
+            if (moneyChip != null) moneyChip.Flash(Theme.danger);
+        }
     }
 
     private void OnBuyLand(int index)
@@ -220,10 +216,15 @@ public class ShopOverlay : MonoBehaviour
         if (shop != null && shop.BuyLand(index, _gm))
         {
             Sfx.Buy();
+            if (moneyChip != null) moneyChip.Punch(0.24f);
             BuildSlots();
             Refresh();
         }
-        else Sfx.Invalid();
+        else
+        {
+            Sfx.Invalid();
+            if (moneyChip != null) moneyChip.Flash(Theme.danger);
+        }
     }
 
     private void OnReroll()
@@ -231,25 +232,30 @@ public class ShopOverlay : MonoBehaviour
         if (_gm.TryRerollShop())
         {
             Sfx.Gacha();
+            if (moneyChip != null) moneyChip.Punch(0.24f);
             BuildSlots();
             Refresh();
         }
-        else Sfx.Invalid();
+        else
+        {
+            Sfx.Invalid();
+            if (moneyChip != null) moneyChip.Flash(Theme.danger);
+        }
     }
 
-    private void OnLeave()
-    {
-        Sfx.ButtonPress();
-        _gm.CloseShop();
-    }
+    private void OnLeave() => _gm.CloseShop();
 
     private void Refresh()
     {
         if (_gm == null) return;
 
-        if (moneyText   != null) moneyText.text   = $"${_gm.money}";
-        if (rerollLabel != null) rerollLabel.text = $"REROLL  ${_gm.ShopRerollCost}";
-        if (rerollButton != null) rerollButton.interactable = _gm.CanAfford(_gm.ShopRerollCost);
+        if (moneyChip != null) moneyChip.SetNumber(_gm.money);
+
+        if (rerollButton != null)
+        {
+            rerollButton.SetLabel($"Reroll  ${_gm.ShopRerollCost}");
+            rerollButton.SetInteractable(_gm.CanAfford(_gm.ShopRerollCost));
+        }
 
         bool canAffordCard = _gm.CanAfford(_gm.BuyCardCost);
         foreach (var view in _cardViews)
@@ -260,11 +266,12 @@ public class ShopOverlay : MonoBehaviour
         }
 
         bool canAffordLand = _gm.CanAfford(_gm.BuyLandCost);
-        foreach (var button in _landButtons)
+        for (int i = 0; i < _landButtons.Count; i++)
         {
-            if (button == null) continue;
-            button.interactable = canAffordLand;
-            SetPrice(button.transform, _gm.BuyLandCost);
+            if (_landButtons[i] == null) continue;
+            _landButtons[i].SetInteractable(canAffordLand);
+            if (i < _landSlots.Count && _landSlots[i] != null)
+                SetPrice(_landSlots[i].transform, _gm.BuyLandCost);
         }
     }
 
@@ -276,8 +283,13 @@ public class ShopOverlay : MonoBehaviour
 
     public static GameObject BuildOverlay()
     {
+        var theme = UITheme.Active;
+
         var root = new GameObject("ShopOverlay", typeof(Canvas), typeof(CanvasScaler),
                                   typeof(GraphicRaycaster), typeof(ShopOverlay));
+
+        var overlay = root.GetComponent<ShopOverlay>();
+        overlay.theme = theme;
 
         var canvas = root.GetComponent<Canvas>();
         canvas.renderMode   = RenderMode.ScreenSpaceOverlay;
@@ -288,47 +300,68 @@ public class ShopOverlay : MonoBehaviour
         scaler.referenceResolution = new Vector2(1920, 1080);
 
         var blocker = CardFactory.Stretch(root.transform, "Blocker", 0f).AddComponent<Image>();
-        blocker.color = new Color(0f, 0f, 0f, 0.72f);
+        blocker.color = new Color(theme.ink.r, theme.ink.g, theme.ink.b, 0.78f);
 
-        var panelGO = new GameObject("Panel", typeof(RectTransform), typeof(Image));
+        var panelGO = new GameObject("Panel", typeof(RectTransform));
         panelGO.transform.SetParent(root.transform, false);
 
         var panelRt = panelGO.GetComponent<RectTransform>();
         panelRt.anchorMin = panelRt.anchorMax = panelRt.pivot = new Vector2(0.5f, 0.5f);
         panelRt.sizeDelta = PanelSize;
 
-        var panelImage = panelGO.GetComponent<Image>();
-        panelImage.sprite = UISprites.RoundedRect;
-        panelImage.type   = Image.Type.Sliced;
-        panelImage.color  = PanelColor;
+        var shadow = Layer(panelRt, "Shadow", theme.PanelShape, theme.shadow, -theme.outlineWidth);
+        shadow.rectTransform.anchoredPosition = new Vector2(0f, -theme.shadowDrop * 1.6f);
 
-        StaticLabel(panelRt, "Title", "END OF WEEK — SHOP", 34f, TextAlignmentOptions.Left,
-                    new Vector2(0f, 1f), new Vector2(36f, -44f));
+        Layer(panelRt, "Outline", theme.PanelShape, theme.ink, -theme.outlineWidth * 1.4f);
+        Layer(panelRt, "Fill",    theme.PanelShape, theme.panel, 0f);
 
-        StaticLabel(panelRt, "Money", "$0", 28f, TextAlignmentOptions.Right,
-                    new Vector2(1f, 1f), new Vector2(-36f, -44f)).color = GoldColor;
+        Label(panelRt, theme, "Title", theme.Label("End of week — shop"), UITheme.Role.Display, 34f,
+              theme.textStrong, TextAlignmentOptions.Left, new Vector2(0f, 1f), new Vector2(36f, -48f));
 
-        StaticLabel(panelRt, "CardsHeader", "CARDS", 18f, TextAlignmentOptions.Left,
-                    new Vector2(0f, 0.5f), new Vector2(36f, 226f))
-            .color = new Color(0.6f, 0.65f, 0.75f, 1f);
+        overlay.moneyChip = StatChip.Build(panelRt, theme, "Money", theme.MoneyIcon, theme.money,
+                                           new Vector2(250f, 78f), false);
+        overlay.moneyChip.Rect.anchorMin        = overlay.moneyChip.Rect.anchorMax =
+        overlay.moneyChip.Rect.pivot            = new Vector2(1f, 1f);
+        overlay.moneyChip.Rect.anchoredPosition = new Vector2(-30f, -26f);
 
-        StaticLabel(panelRt, "LandHeader", "LAND", 18f, TextAlignmentOptions.Left,
-                    new Vector2(0f, 0.5f), new Vector2(36f, -94f))
-            .color = new Color(0.6f, 0.65f, 0.75f, 1f);
+        Label(panelRt, theme, "CardsHeader", theme.Label("Cards"), UITheme.Role.Body, 18f, theme.textMuted,
+              TextAlignmentOptions.Left, new Vector2(0f, 0.5f), new Vector2(36f, 232f));
 
-        BuildRow(panelRt, "CardRow", new Vector2(0f, 74f), new Vector2(1080f, 300f), 26f);
-        BuildRow(panelRt, "LandRow", new Vector2(0f, -166f), new Vector2(1080f, 120f), 24f);
+        Label(panelRt, theme, "LandHeader", theme.Label("Land"), UITheme.Role.Body, 18f, theme.textMuted,
+              TextAlignmentOptions.Left, new Vector2(0f, 0.5f), new Vector2(36f, -92f));
 
-        StaticButton(panelRt, "Reroll", "REROLL", new Vector2(230f, 62f),
-                     new Vector2(0f, 0f), new Vector2(150f, 42f));
-        StaticButton(panelRt, "Leave", "LEAVE SHOP", new Vector2(230f, 62f),
-                     new Vector2(1f, 0f), new Vector2(-150f, 42f));
+        overlay.cardRow = BuildRow(panelRt, "CardRow", new Vector2(0f, 80f), new Vector2(1080f, 300f), 26f);
+        overlay.landRow = BuildRow(panelRt, "LandRow", new Vector2(0f, -168f), new Vector2(1080f, 140f), 24f);
 
+        overlay.rerollButton = ChunkyButton.Build(panelRt, theme, "Reroll", theme.paths,
+                                                  new Vector2(250f, 68f));
+        overlay.rerollButton.Rect.anchorMin = overlay.rerollButton.Rect.anchorMax =
+        overlay.rerollButton.Rect.pivot     = new Vector2(0f, 0f);
+        overlay.rerollButton.Rect.anchoredPosition = new Vector2(36f, 42f);
+
+        overlay.leaveButton = ChunkyButton.Build(panelRt, theme, "Leave Shop", theme.quota,
+                                                 new Vector2(250f, 68f));
+        overlay.leaveButton.Rect.anchorMin = overlay.leaveButton.Rect.anchorMax =
+        overlay.leaveButton.Rect.pivot     = new Vector2(1f, 0f);
+        overlay.leaveButton.Rect.anchoredPosition = new Vector2(-36f, 42f);
+        overlay.leaveButton.SetPulsing(true);
+
+        overlay.panel = panelRt;
         return root;
     }
 
-    private static void BuildRow(RectTransform parent, string name, Vector2 position,
-                                 Vector2 size, float spacing)
+    private static Image Layer(RectTransform parent, string name, Sprite sprite, Color color, float inset)
+    {
+        var image = CardFactory.Stretch(parent, name, inset).AddComponent<Image>();
+        image.sprite        = sprite;
+        image.type          = StatChip.SpriteType(sprite);
+        image.color         = color;
+        image.raycastTarget = false;
+        return image;
+    }
+
+    private static RectTransform BuildRow(RectTransform parent, string name, Vector2 position,
+                                          Vector2 size, float spacing)
     {
         var rowGO = new GameObject(name, typeof(RectTransform), typeof(HorizontalLayoutGroup));
         rowGO.transform.SetParent(parent, false);
@@ -345,14 +378,12 @@ public class ShopOverlay : MonoBehaviour
         layout.childForceExpandHeight = false;
         layout.childControlWidth      = true;
         layout.childControlHeight     = true;
+        return rt;
     }
 
-    private TMP_Text MakeLabel(RectTransform parent, string name, string content, float fontSize,
-                               TextAlignmentOptions alignment, Vector2 anchor, Vector2 position)
-        => StaticLabel(parent, name, content, fontSize, alignment, anchor, position);
-
-    private static TMP_Text StaticLabel(RectTransform parent, string name, string content, float fontSize,
-                                        TextAlignmentOptions alignment, Vector2 anchor, Vector2 position)
+    private static TMP_Text Label(RectTransform parent, UITheme theme, string name, string content,
+                                  UITheme.Role role, float fontSize, Color color,
+                                  TextAlignmentOptions alignment, Vector2 anchor, Vector2 position)
     {
         var go = new GameObject(name, typeof(RectTransform));
         go.transform.SetParent(parent, false);
@@ -364,35 +395,9 @@ public class ShopOverlay : MonoBehaviour
         rt.anchoredPosition = position;
 
         var text = go.AddComponent<TextMeshProUGUI>();
-        text.text          = content;
-        text.fontSize      = fontSize;
-        text.fontStyle     = FontStyles.Bold;
-        text.alignment     = alignment;
-        text.color         = Color.white;
-        text.raycastTarget = false;
+        text.text      = content;
+        text.alignment = alignment;
+        theme.Apply(text, role, fontSize, color);
         return text;
-    }
-
-    private static void StaticButton(RectTransform parent, string name, string content,
-                                     Vector2 size, Vector2 anchor, Vector2 position)
-    {
-        var go = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
-        go.transform.SetParent(parent, false);
-
-        var rt = go.GetComponent<RectTransform>();
-        rt.anchorMin        = rt.anchorMax = anchor;
-        rt.pivot            = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta        = size;
-        rt.anchoredPosition = position;
-
-        var image = go.GetComponent<Image>();
-        image.sprite = UISprites.RoundedRect;
-        image.type   = Image.Type.Sliced;
-        image.color  = ButtonColor;
-
-        go.GetComponent<Button>().targetGraphic = image;
-
-        StaticLabel(rt, "Label", content, 19f, TextAlignmentOptions.Center,
-                    new Vector2(0.5f, 0.5f), Vector2.zero);
     }
 }

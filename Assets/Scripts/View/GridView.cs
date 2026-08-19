@@ -192,7 +192,7 @@ public class GridView : MonoBehaviour
         }
     }
 
-    private void SpawnScorePopup(EnclosureInstance instance, float score)
+    public Vector3 ScoreAnchorWorld(EnclosureInstance instance)
     {
         var basePos = EnclosurePivotWorld(instance, 0f);
         float top   = basePos.y + 1f;
@@ -203,7 +203,12 @@ public class GridView : MonoBehaviour
             foreach (var r in renderers) top = Mathf.Max(top, r.bounds.max.y + 0.4f);
         }
 
-        ScorePopup.Spawn(new Vector3(basePos.x, top, basePos.z), score, transform);
+        return new Vector3(basePos.x, top, basePos.z);
+    }
+
+    private void SpawnScorePopup(EnclosureInstance instance, float score)
+    {
+        ScorePopup.Spawn(ScoreAnchorWorld(instance), score, transform);
     }
 
     private void OnSelectSlot(InputAction.CallbackContext ctx)
@@ -635,6 +640,8 @@ public class GridView : MonoBehaviour
                     PositionEdgeQuad(go.transform, false, x, y, YPath);
                     _pathViews.Add(go);
                 }
+
+        if (Game != null) Game.NotifyEconomyChanged();
     }
 
     private void PositionEdgeQuad(Transform t, bool horiz, int x, int y, float worldY)

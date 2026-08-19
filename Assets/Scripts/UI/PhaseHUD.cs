@@ -1,32 +1,29 @@
-using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-// Wires a manually-built Canvas (one Button + four TMP text objects) to
-// GameManager's day/week/phase loop:
-//   - manaText / quotaText / scoreText / dayText refresh whenever the
-//     economy changes.
-//   - advanceButton calls GameManager.AdvanceDayPhase() — only visible/usable
-//     during Phase.Build. Wiring is done in code (Start()); do not also add
-//     an OnClick() entry for it in the Inspector.
-//   - when GameManager enters Phase.Reward, this spawns its own runtime popup
-//     canvas showing 3 big reward cards (from GameManager.RewardOptions);
-//     clicking one calls GameManager.ChooseReward and returns to Phase.Build.
-//
-// Assign advanceButton/manaText/quotaText/scoreText/dayText in the Inspector
-// after building the Canvas. Use TextMeshProUGUI for the text fields (TMP_Text
-// is the base class both TextMeshProUGUI and 3D TMP use).
 public class PhaseHUD : MonoBehaviour
 {
-    [Header("Wire these to your Canvas objects")]
+    [Header("Scene")]
     [SerializeField] private GameManager gameManager;
-    [SerializeField] private Button   advanceButton;
-    [SerializeField] private TMP_Text manaText;
-    [SerializeField] private TMP_Text quotaText;
-    [SerializeField] private TMP_Text scoreText;
-    [SerializeField] private TMP_Text dayText;
-    [SerializeField] private TMP_Text pathsText; // optional — leave unassigned if not built yet
+    [SerializeField] private GridView    gridView;
+
+    [Header("Built by SkyZoo/UI/Build Game HUD")]
+    [SerializeField] private UITheme       theme;
+    [SerializeField] private StatChip      manaChip;
+    [SerializeField] private StatChip      scoreChip;
+    [SerializeField] private StatChip      moneyChip;
+    [SerializeField] private StatChip      pathsChip;
+    [SerializeField] private DayTrack      dayTrack;
+    [SerializeField] private ChunkyButton  advanceButton;
+    [SerializeField] private HudJuice      juice;
+    [SerializeField] private RectTransform moteLayer;
+    [SerializeField] private GameObject    legacyRoot;
+
+    [Header("Score Motes")]
+    [SerializeField] private float moteSize     = 46f;
+    [SerializeField] private float moteDuration = 0.55f;
+    [SerializeField] private float moteShake    = 5f;
 
     [Header("Prefabs (leave empty to generate at runtime)")]
     [SerializeField] private GameObject rewardPopupPrefab;
@@ -41,41 +38,143 @@ public class PhaseHUD : MonoBehaviour
     private GameObject  _rewardCanvas;
     private ShopOverlay _shopOverlay;
 
+    private float _scoreShown;
+    private bool  _quotaCelebrated;
+
     void Start()
     {
         if (gameManager == null)
             gameManager = GameManager.instance != null ? GameManager.instance : FindAnyObjectByType<GameManager>();
+        if (gridView == null) gridView = FindAnyObjectByType<GridView>();
+        if (theme == null) theme = UITheme.Active;
 
-        advanceButton.onClick.AddListener(gameManager.AdvanceDayPhase);
+        if (manaChip == null || scoreChip == null || advanceButton == null)
+        {
+            Debug.LogError("[SkyZoo] PhaseHUD is not built. Run SkyZoo/UI/Build Game HUD.");
+            return;
+        }
 
-        gameManager.OnEconomyChanged += RefreshTexts;
-        gameManager.OnPhaseChanged   += HandlePhaseChanged;
+        if (legacyRoot != null) legacyRoot.SetActive(false);
 
-        RefreshTexts();
+        advanceButton.SetOnClick(gameManager.AdvanceDayPhase);
+        if (moneyChip != null) moneyChip.SetPrefix("$");
+
+        gameManager.OnEconomyChanged  += Refresh;
+        gameManager.OnPhaseChanged    += HandlePhaseChanged;
+        gameManager.OnManaDenied      += HandleManaDenied;
+        gameManager.OnEnclosureScored += HandleEnclosureScored;
+
+        _scoreShown = gameManager.WeekScore;
+        Refresh();
         HandlePhaseChanged();
     }
 
     void OnDestroy()
     {
         if (gameManager == null) return;
-        gameManager.OnEconomyChanged -= RefreshTexts;
-        gameManager.OnPhaseChanged   -= HandlePhaseChanged;
+        gameManager.OnEconomyChanged  -= Refresh;
+        gameManager.OnPhaseChanged    -= HandlePhaseChanged;
+        gameManager.OnManaDenied      -= HandleManaDenied;
+        gameManager.OnEnclosureScored -= HandleEnclosureScored;
     }
 
-    private void RefreshTexts()
+    private void Refresh()
     {
-        manaText.text  = $"Mana: {gameManager.Mana}/{gameManager.MaxMana}";
-        quotaText.text = $"Quota: {gameManager.Quota:0}";
-        scoreText.text = $"Score: {gameManager.WeekScore:0}";
-        dayText.text   = $"Day {gameManager.Day} / {gameManager.DaysPerWeek}";
-        if (pathsText != null) pathsText.text = $"Paths: {gameManager.PathsRemaining}/{gameManager.MaxPaths}";
+        manaChip.SetNumber(gameManager.Mana, "0", $"/{gameManager.MaxMana}");
+        manaChip.SetBar(gameManager.MaxMana > 0 ? gameManager.Mana / (float)gameManager.MaxMana : 0f);
+
+        if (moneyChip != null) moneyChip.SetNumber(gameManager.money);
+        if (pathsChip != null) pathsChip.SetNumber(gameManager.PathsRemaining, "0", $"/{gameManager.MaxPaths}");
+
+        if (gameManager.CurrentPhase != GameManager.Phase.Scoring)
+        {
+            _scoreShown = gameManager.WeekScore;
+            ApplyScore(false);
+        }
+
+        if (dayTrack != null)
+            dayTrack.SetDays(gameManager.Day, gameManager.DaysPerWeek, gameManager.Week);
+    }
+
+    private void ApplyScore(bool animate)
+    {
+        float quota = Mathf.Max(1f, gameManager.Quota);
+
+        scoreChip.SetNumber(_scoreShown, "0", "", animate);
+        scoreChip.SetLabel($"Score  ·  quota {gameManager.Quota:0}");
+        scoreChip.SetBar(_scoreShown / quota, animate);
+
+        bool met = _scoreShown >= gameManager.Quota;
+        if (met && !_quotaCelebrated)
+        {
+            _quotaCelebrated = true;
+            scoreChip.SetAccent(theme.quota);
+            scoreChip.Punch(0.42f);
+            scoreChip.Flash(theme.quota, 0.8f);
+            if (juice != null)
+            {
+                juice.Shake(16f);
+                juice.Flash(theme.quota, 0.22f);
+            }
+            Sfx.Coin();
+        }
+        else if (!met && _quotaCelebrated)
+        {
+            _quotaCelebrated = false;
+            scoreChip.SetAccent(theme.score);
+        }
+    }
+
+    private void HandleManaDenied()
+    {
+        manaChip.Flash(theme.danger, 1f);
+        manaChip.Punch(0.2f);
+        if (juice != null) juice.Shake(7f);
+    }
+
+    private void HandleEnclosureScored(EnclosureInstance instance, float score)
+    {
+        if (moteLayer == null || gridView == null || Camera.main == null)
+        {
+            _scoreShown += score;
+            ApplyScore(true);
+            return;
+        }
+
+        var world  = gridView.ScoreAnchorWorld(instance);
+        var screen = Camera.main.WorldToScreenPoint(world);
+
+        if (screen.z < 0f)
+        {
+            _scoreShown += score;
+            ApplyScore(true);
+            return;
+        }
+
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(
+            moteLayer, screen, null, out var from);
+
+        var target = RectTransformUtility.WorldToScreenPoint(null, scoreChip.Rect.position);
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(
+            moteLayer, target, null, out var to);
+
+        float landed = score;
+        ScoreMote.Spawn(moteLayer, from, to, theme.ScoreIcon, theme.score,
+                        moteSize, moteDuration, 0f, () =>
+        {
+            _scoreShown += landed;
+            ApplyScore(true);
+            if (juice != null) juice.Shake(moteShake);
+        });
     }
 
     private void HandlePhaseChanged()
     {
-        RefreshTexts();
+        Refresh();
+
         bool inBuild = gameManager.CurrentPhase == GameManager.Phase.Build;
         advanceButton.gameObject.SetActive(inBuild);
+        advanceButton.SetPulsing(inBuild);
 
         if (gameManager.CurrentPhase == GameManager.Phase.Reward) ShowRewardPopup();
         else                                                      HideRewardPopup();
@@ -143,6 +242,8 @@ public class PhaseHUD : MonoBehaviour
 
     public static GameObject BuildRewardPopup(float cardHeight)
     {
+        var theme = UITheme.Active;
+
         var canvasGO = new GameObject("RewardCanvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
 
         var canvas = canvasGO.GetComponent<Canvas>();
@@ -154,22 +255,32 @@ public class PhaseHUD : MonoBehaviour
         scaler.referenceResolution = new Vector2(1920, 1080);
 
         var blocker = CardFactory.Stretch(canvasGO.transform, "Blocker", 0f).AddComponent<Image>();
-        blocker.color = new Color(0f, 0f, 0f, 0.6f);
+        blocker.color = new Color(theme.ink.r, theme.ink.g, theme.ink.b, 0.78f);
+
+        var panelGO = new GameObject("Panel", typeof(RectTransform));
+        panelGO.transform.SetParent(canvasGO.transform, false);
+
+        var panelRt = panelGO.GetComponent<RectTransform>();
+        panelRt.anchorMin = panelRt.anchorMax = panelRt.pivot = new Vector2(0.5f, 0.5f);
+        panelRt.sizeDelta = new Vector2(1000f, cardHeight + 240f);
+
+        var panelShadow = RewardLayer(panelRt, "Shadow", theme.PanelShape, theme.shadow, -theme.outlineWidth);
+        panelShadow.rectTransform.anchoredPosition = new Vector2(0f, -theme.shadowDrop * 1.6f);
+
+        RewardLayer(panelRt, "Outline", theme.PanelShape, theme.ink, -theme.outlineWidth * 1.4f);
+        RewardLayer(panelRt, "Fill",    theme.PanelShape, theme.panel, 0f);
 
         var titleGO = new GameObject("RewardTitle", typeof(RectTransform));
         titleGO.transform.SetParent(canvasGO.transform, false);
         var titleRt = titleGO.GetComponent<RectTransform>();
         titleRt.anchorMin        = titleRt.anchorMax = new Vector2(0.5f, 0.5f);
         titleRt.sizeDelta        = new Vector2(900f, 60f);
-        titleRt.anchoredPosition = new Vector2(0f, cardHeight * 0.5f + 62f);
+        titleRt.anchoredPosition = new Vector2(0f, cardHeight * 0.5f + 68f);
 
         var title = titleGO.AddComponent<TextMeshProUGUI>();
-        title.text          = "PICK A CARD";
-        title.fontSize      = 34f;
-        title.fontStyle     = FontStyles.Bold;
-        title.alignment     = TextAlignmentOptions.Center;
-        title.color         = Color.white;
-        title.raycastTarget = false;
+        title.text      = theme.Label("Pick a card");
+        title.alignment = TextAlignmentOptions.Center;
+        theme.Apply(title, UITheme.Role.Display, 38f, theme.textStrong);
 
         var rowGO = new GameObject("CardRow", typeof(RectTransform), typeof(HorizontalLayoutGroup));
         rowGO.transform.SetParent(canvasGO.transform, false);
@@ -186,6 +297,17 @@ public class PhaseHUD : MonoBehaviour
         layout.childControlHeight     = true;
 
         return canvasGO;
+    }
+
+    private static Image RewardLayer(RectTransform parent, string name, Sprite sprite,
+                                     Color color, float inset)
+    {
+        var image = CardFactory.Stretch(parent, name, inset).AddComponent<Image>();
+        image.sprite        = sprite;
+        image.type          = StatChip.SpriteType(sprite);
+        image.color         = color;
+        image.raycastTarget = false;
+        return image;
     }
 
     private void HideRewardPopup()
